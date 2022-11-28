@@ -1,0 +1,2767 @@
+import os
+import time
+import xlwt
+import pandas as pd
+from math import sqrt, isclose
+import pyomo.opt as po
+import pyomo.environ as pe
+from network_planning import NetworkPlanning
+from shared_energy_storage import SharedEnergyStorage
+from shared_energy_storage_data import SharedEnergyStorageData
+from planning_parameters import PlanningParameters
+from helper_functions import *
+
+
+# ======================================================================================================================
+#   Class SHARED RESOURCES PLANNING
+# ======================================================================================================================
+class SharedResourcesPlanning:
+
+    def __init__(self, data_dir, filename):
+        self.name = filename.replace('.txt', '')
+        self.data_dir = data_dir
+        self.filename = filename
+        self.market_data_file = str()
+        self.results_dir = os.path.join(data_dir, 'Results')
+        self.plots_dir = os.path.join(data_dir, 'Results', 'Plots')
+        self.diagrams_dir = os.path.join(data_dir, 'Diagrams')
+        self.params_file = str()
+        self.years = dict()
+        self.days = dict()
+        self.num_instants = 0
+        self.discount_factor = 0.00
+        self.cost_energy_p = dict()
+        self.cost_energy_q = dict()
+        self.cost_secondary_reserve = dict()
+        self.cost_tertiary_reserve_up = dict()
+        self.cost_tertiary_reserve_down = dict()
+        self.prob_market_scenarios = list()
+        self.distribution_networks = dict()
+        self.transmission_network = NetworkPlanning()
+        self.shared_ess_data = SharedEnergyStorageData()
+        self.params = PlanningParameters()
+
+    def run_planning_problem(self):
+        print('[INFO] Running PLANNING PROBLEM...')
+        _run_planning_problem(self)
+
+    def run_operational_planning(self, esso_model, tso_model, dso_models, consensus_vars, dual_vars):
+        print('[INFO] Running OPERATIONAL PLANNING...')
+        return _run_operational_planning(self, esso_model, tso_model, dso_models, consensus_vars, dual_vars)
+
+    def initialize_operational_planning_problem(self, candidate_solution):
+        return _initialize_operational_planning_problem(self, candidate_solution)
+
+    def update_models_with_candidate_solution(self, tso_model, dso_models, esso_model, candidate_solution):
+        self.transmission_network.update_model_with_candidate_solution(tso_model, candidate_solution['total_capacity'])
+        for node_id in self.active_distribution_network_nodes:
+            self.distribution_networks[node_id].update_model_with_candidate_solution(dso_models[node_id], candidate_solution['total_capacity'])
+        self.shared_ess_data.update_model_with_candidate_solution(esso_model, candidate_solution['investment'])
+
+    def update_admm_consensus_variables(self, tso_model, dso_models, esso_model, consensus_vars, dual_vars, params):
+        _update_admm_consensus_variables(self, tso_model, dso_models, esso_model, consensus_vars, dual_vars, params)
+
+    def read_planning_problem(self):
+        _read_planning_problem(self)
+
+    def read_market_data_from_file(self):
+        _read_market_data_from_file(self)
+
+    def read_planning_parameters_from_file(self):
+        print(f'[INFO] Reading PLANNING PARAMETERS from file {self.params_file} ...')
+        filename = os.path.join(self.data_dir, self.params_file)
+        self.params.read_parameters_from_file(filename)
+
+    def write_operational_planning_results_to_excel(self, tso_model, dso_models, esso_model, results, primal_evolution=list()):
+        filename = self.filename.replace('.txt', '') + '_operational_planning_results'
+        processed_results = _process_operational_planning_results(self, tso_model, dso_models, esso_model, results)
+        _write_operational_planning_results_to_excel(self, processed_results, primal_evolution=primal_evolution, filename=filename)
+
+    def write_planning_results_to_excel(self, tso_model, dso_models, esso_model, operational_results=dict(), bound_evolution=dict(), execution_time='N/A'):
+        filename = self.filename.replace('.txt', '') + '_planning_results'
+        shared_ess_capacity = self.shared_ess_data.get_investment_and_available_capacities(esso_model)
+        shared_ess_processed_results = self.shared_ess_data.process_results(esso_model, execution_time=execution_time)
+        if operational_results['tso']:
+            operational_planning_processed_results = _process_operational_planning_results(self, tso_model, dso_models, esso_model, operational_results)
+            _write_planning_results_to_excel(self, shared_ess_processed_results, shared_ess_capacity, operational_planning_processed_results, bound_evolution, filename)
+        else:
+            _write_planning_results_to_excel(self, shared_ess_processed_results, shared_ess_capacity, bound_evolution=bound_evolution, filename=filename)
+
+
+# ======================================================================================================================
+#  PLANNING functions
+# ======================================================================================================================
+def _run_planning_problem(planning_problem):
+
+    shared_ess_data = planning_problem.shared_ess_data
+    shared_ess_parameters = shared_ess_data.params
+    benders_parameters = planning_problem.params.benders
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # 0. Initialization
+    iter = 1
+    convergence = False
+    lower_bound = -shared_ess_parameters.budget * 1e3
+    upper_bound = shared_ess_parameters.budget * 1e3
+    lower_bound_evolution = [lower_bound]
+    upper_bound_evolution = [upper_bound]
+    candidate_solution = {'investment': {}, 'total_capacity': {}}
+    operational_results = {'tso': dict(), 'dso': dict(), 'esso': dict()}
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution['investment'][node_id] = dict()
+        candidate_solution['total_capacity'][node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution['investment'][node_id][year] = dict()
+            candidate_solution['investment'][node_id][year]['s'] = 0.00
+            candidate_solution['investment'][node_id][year]['e'] = 0.00
+            candidate_solution['total_capacity'][node_id][year] = dict()
+            candidate_solution['total_capacity'][node_id][year]['s'] = 0.00
+            candidate_solution['total_capacity'][node_id][year]['e'] = 0.00
+
+    print(f'[INFO] Iter {iter}. LB = {lower_bound}, UB = {upper_bound}')
+
+    # 0.1. Models creation and initialization
+    # - Create and warm-start master and subproblem models
+    start = time.time()
+    esso_master_problem_model = shared_ess_data.build_master_problem()
+    esso_subproblem_model, tso_model, dso_models, consensus_vars, dual_vars = planning_problem.initialize_operational_planning_problem(candidate_solution)
+
+    # Benders' main cycle
+    while iter < benders_parameters.num_max_iters and not convergence:
+
+        print(f'[INFO] Iter {iter}. LB = {lower_bound}, UB = {upper_bound}')
+        _print_candidate_solution(candidate_solution)
+
+        # 5. Subproblem
+        # 5.1. Solve subproblem(s), with fixed investment variables
+        planning_problem.update_models_with_candidate_solution(tso_model, dso_models, esso_subproblem_model, candidate_solution)
+
+        #operational_results['esso'] = shared_ess_data.optimize(esso_subproblem_model)
+        operational_results = planning_problem.run_operational_planning(esso_subproblem_model, tso_model, dso_models, consensus_vars, dual_vars)
+
+        # 5.2. Get coupling constraints' sensitivities (subproblem)
+        sensitivities = shared_ess_data.get_sensitivities(esso_subproblem_model)
+
+        # 5.3. Get OF value (upper bound) from the subproblem
+        upper_bound = shared_ess_data.compute_primal_value(esso_subproblem_model)
+        upper_bound_evolution.append(upper_bound)
+
+        # 4. Convergence check
+        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
+            lower_bound_evolution.append(lower_bound)
+            convergence = True
+            break
+
+        # 4.1. Update iter
+        iter += 1
+
+        # 3. Solve Master problem
+        # 3.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
+        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities,
+                                        candidate_solution['investment'])
+
+        # 3.2. Run master problem optimization
+        shared_ess_data.optimize(esso_master_problem_model)
+
+        # 3.3. Get new capacity values, and the value of alpha (lower bound)
+        candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
+        lower_bound = pe.value(esso_master_problem_model.alpha)
+        lower_bound_evolution.append(lower_bound)
+
+    if not convergence:
+        print('[WARNING] Convergence not obtained!')
+
+    print('[INFO] Final. LB = {}, UB = {}'.format(lower_bound, upper_bound))
+
+    # Write results
+    end = time.time()
+    total_execution_time = end - start
+    bound_evolution = {'lower_bound': lower_bound_evolution, 'upper_bound': upper_bound_evolution}
+    planning_problem.write_planning_results_to_excel(tso_model, dso_models, esso_subproblem_model, operational_results, bound_evolution, execution_time=total_execution_time)
+
+
+def _print_candidate_solution(candidate_solution):
+
+    print('[INFO] Candidate solution:')
+
+    # Header
+    print('\t\t{:3}\t{:10}\t'.format('', 'Capacity'), end='')
+    for node_id in candidate_solution['total_capacity']:
+        for year in candidate_solution['total_capacity'][node_id]:
+            print(f'{year}\t', end='')
+        print()
+        break
+
+    # Values
+    for node_id in candidate_solution['total_capacity']:
+        print('\t\t{:3}\t{:10}\t'.format(node_id, 'S, [MVA]'), end='')
+        for year in candidate_solution['total_capacity'][node_id]:
+            print("{:.3f}\t".format(candidate_solution['total_capacity'][node_id][year]['s']), end='')
+        print()
+        print('\t\t{:3}\t{:10}\t'.format(node_id, 'E, [MVAh]'), end='')
+        for year in candidate_solution['total_capacity'][node_id]:
+            print("{:.3f}\t".format(candidate_solution['total_capacity'][node_id][year]['e']), end='')
+        print()
+
+
+# ======================================================================================================================
+#  OPERATIONAL PLANNING functions
+# ======================================================================================================================
+def _initialize_operational_planning_problem(planning_problem, candidate_solution):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+    shared_ess_data = planning_problem.shared_ess_data
+    admm_parameters = planning_problem.params.admm
+
+    # Creste ADMM variables
+    consensus_vars, dual_vars = create_admm_variables(planning_problem)
+
+    # Create Operational Planning models
+    dso_models = create_distribution_networks_models(distribution_networks, consensus_vars['interface']['pf']['dso'], consensus_vars['ess']['dso'], candidate_solution['total_capacity'])
+    update_distribution_models_to_admm(distribution_networks, dso_models, consensus_vars['interface']['pf']['dso'], admm_parameters)
+
+    tso_model = create_transmission_network_model(transmission_network, consensus_vars['interface']['v'], consensus_vars['interface']['pf'], consensus_vars['ess']['tso'], candidate_solution['total_capacity'])
+    update_transmission_model_to_admm(transmission_network, tso_model, consensus_vars['interface']['pf'], admm_parameters)
+
+    esso_model = create_shared_energy_storage_model(shared_ess_data, candidate_solution['investment'])
+    update_shared_energy_storage_model_to_admm(shared_ess_data, esso_model, admm_parameters)
+
+    planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+
+    return esso_model, tso_model, dso_models, consensus_vars, dual_vars
+
+
+def _run_operational_planning(planning_problem, esso_model, tso_model, dso_models, consensus_vars, dual_vars):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+    admm_parameters = planning_problem.params.admm
+    results = {'tso': dict(), 'dso': dict(), 'esso': dict()}
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # 0. Initialization
+    start = time.time()
+    primal_evolution = list()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # ADMM -- Main cycle
+    # ------------------------------------------------------------------------------------------------------------------
+    convergence, num_iter = False, 1
+    for iter in range(admm_parameters.num_max_iters):
+
+        iter_start = time.time()
+
+        print(f'================================================== ITERATION #{num_iter} =================================================')
+
+        # --------------------------------------------------------------------------------------------------------------
+        # 2. Solve TSO problem
+        results['tso'] = update_transmission_coordination_model_and_solve(transmission_network, tso_model,
+                                                                          consensus_vars['interface']['pf']['dso'], dual_vars['pf']['tso'],
+                                                                          consensus_vars['ess']['esso'], dual_vars['ess']['tso'],
+                                                                          consensus_vars['ess']['capacity'],
+                                                                          admm_parameters)
+
+        # 2.1 Update ADMM CONSENSUS variables
+        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+
+        # 2.2 Update primal evolution
+        primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
+
+        # 2.3 STOPPING CRITERIA evaluation
+        if iter > 1:
+            convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
+            if convergence:
+                break
+
+        # --------------------------------------------------------------------------------------------------------------
+        # 3. Solve DSOs problems
+        results['dso'] = update_distribution_coordination_models_and_solve(distribution_networks, dso_models, consensus_vars['interface']['v'],
+                                                                           consensus_vars['interface']['pf']['tso'], dual_vars['pf']['dso'],
+                                                                           consensus_vars['ess']['esso'], dual_vars['ess']['dso'],
+                                                                           consensus_vars['ess']['capacity'],
+                                                                           admm_parameters)
+
+        # 3.1 Update ADMM CONSENSUS variables
+        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+
+        # 3.2 Update primal evolution
+        primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
+
+        # 3.3 STOPPING CRITERIA evaluation
+        if iter > 1:
+            convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
+            if convergence:
+                break
+
+        # --------------------------------------------------------------------------------------------------------------
+        # 4. Solve ESSO problem
+        results['esso'] = update_shared_energy_storages_coordination_model_and_solve(planning_problem, esso_model,
+                                                                                     consensus_vars['ess'], dual_vars['ess'],
+                                                                                     admm_parameters)
+
+        # 4.1 Update ADMM CONSENSUS variables
+        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+
+        # 4.2 Update primal evolution
+        primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
+
+        # 4.3 STOPPING CRITERIA evaluation
+        convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
+        if convergence:
+            break
+
+        iter_end = time.time()
+        print('Iter {}... {:.2f} s'.format(num_iter, iter_end - iter_start))
+        num_iter += 1
+
+    if convergence:
+        end = time.time()
+        print('[INFO] Success. ADMM converged in {} iterations!'.format(num_iter))
+        print('[INFO] Elapsed time = {:.2f} s.'.format(end - start))
+        planning_problem.write_operational_planning_results_to_excel(tso_model, dso_models, esso_model, results, primal_evolution=primal_evolution)
+    else:
+        print('[WARNING] ADMM did NOT converge in {} iterations!'.format(admm_parameters.num_max_iters))
+
+    return results
+
+
+def create_admm_variables(planning_problem):
+
+    num_instants = planning_problem.num_instants
+
+    consensus_variables = {
+        'interface': {
+            'v': dict(),
+            'pf': {'tso': dict(), 'dso': dict()}
+        },
+        'ess': {'tso': dict(), 'dso': dict(), 'esso': dict(), 'capacity': {'s': dict(), 'e': dict()}}
+    }
+
+    dual_variables = {
+        'pf': {'tso': dict(), 'dso': dict()},
+        'ess': {'tso': dict(), 'dso': dict()}
+    }
+
+    for dn in range(len(planning_problem.active_distribution_network_nodes)):
+
+        node_id = planning_problem.active_distribution_network_nodes[dn]
+
+        consensus_variables['interface']['v'][node_id] = dict()
+        consensus_variables['interface']['pf']['tso'][node_id] = dict()
+        consensus_variables['interface']['pf']['dso'][node_id] = dict()
+        consensus_variables['ess']['tso'][node_id] = dict()
+        consensus_variables['ess']['dso'][node_id] = dict()
+        consensus_variables['ess']['esso'][node_id] = dict()
+        consensus_variables['ess']['capacity']['s'][node_id] = dict()
+        consensus_variables['ess']['capacity']['e'][node_id] = dict()
+
+        dual_variables['pf']['tso'][node_id] = dict()
+        dual_variables['pf']['dso'][node_id] = dict()
+        dual_variables['ess']['tso'][node_id] = dict()
+        dual_variables['ess']['dso'][node_id] = dict()
+
+        for year in planning_problem.years:
+
+            consensus_variables['interface']['v'][node_id][year] = dict()
+            consensus_variables['interface']['pf']['tso'][node_id][year] = dict()
+            consensus_variables['interface']['pf']['dso'][node_id][year] = dict()
+            consensus_variables['ess']['tso'][node_id][year] = dict()
+            consensus_variables['ess']['dso'][node_id][year] = dict()
+            consensus_variables['ess']['esso'][node_id][year] = dict()
+            consensus_variables['ess']['capacity']['s'][node_id][year] = planning_problem.shared_ess_data.shared_energy_storages[year][dn].s
+            consensus_variables['ess']['capacity']['e'][node_id][year] = planning_problem.shared_ess_data.shared_energy_storages[year][dn].e
+
+            dual_variables['pf']['tso'][node_id][year] = dict()
+            dual_variables['pf']['dso'][node_id][year] = dict()
+            dual_variables['ess']['tso'][node_id][year] = dict()
+            dual_variables['ess']['dso'][node_id][year] = dict()
+
+            for day in planning_problem.days:
+
+                consensus_variables['interface']['v'][node_id][year][day] = [1.0] * num_instants
+                consensus_variables['interface']['pf']['tso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables['interface']['pf']['dso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables['ess']['tso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables['ess']['dso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables['ess']['esso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+
+                dual_variables['pf']['tso'][node_id][year][day] = {'p': [0.0] * planning_problem.num_instants, 'q': [0.0] * num_instants}
+                dual_variables['pf']['dso'][node_id][year][day] = {'p': [0.0] * planning_problem.num_instants, 'q': [0.0] * num_instants}
+                dual_variables['ess']['tso'][node_id][year][day] = {'p': [0.0] * planning_problem.num_instants, 'q': [0.0] * num_instants}
+                dual_variables['ess']['dso'][node_id][year][day] = {'p': [0.0] * planning_problem.num_instants, 'q': [0.0] * num_instants}
+
+    return consensus_variables, dual_variables
+
+
+def create_transmission_network_model(transmission_network, interface_v_vars, interface_pf_vars, sess_vars, candidate_solution):
+
+    # Build model, fix candidate solution, and Run S-MPOPF model
+    tso_model = transmission_network.build_model()
+    transmission_network.update_model_with_candidate_solution(tso_model, candidate_solution)
+    for node_id in transmission_network.active_distribution_network_nodes:
+        for year in transmission_network.years:
+            for day in transmission_network.days:
+                node_idx = transmission_network.network[year][day].get_node_idx(node_id)
+                s_base = transmission_network.network[year][day].baseMVA
+                for s_m in tso_model[year][day].scenarios_market:
+                    for s_o in tso_model[year][day].scenarios_operation:
+                        for p in tso_model[year][day].periods:
+                            pc = interface_pf_vars['dso'][node_id][year][day]['p'][p] / s_base
+                            qc = interface_pf_vars['dso'][node_id][year][day]['q'][p] / s_base
+                            tso_model[year][day].pc[node_idx, s_m, s_o, p].fix(pc)
+                            tso_model[year][day].qc[node_idx, s_m, s_o, p].fix(qc)
+                            tso_model[year][day].flex_p_up[node_idx, s_m, s_o, p].fix(0.0)
+                            tso_model[year][day].flex_p_down[node_idx, s_m, s_o, p].fix(0.0)
+    transmission_network.optimize(tso_model)
+
+    # Get initial interface PF values
+    for year in transmission_network.years:
+        for day in transmission_network.days:
+            s_base = transmission_network.network[year][day].baseMVA
+            for dn in tso_model[year][day].active_distribution_networks:
+                node_id = transmission_network.active_distribution_network_nodes[dn]
+                for p in tso_model[year][day].periods:
+                    v_mag = pe.value(tso_model[year][day].expected_interface_vmag[dn, p])
+                    interface_pf_p = pe.value(tso_model[year][day].expected_interface_pf_p[dn, p]) * s_base
+                    interface_pf_q = pe.value(tso_model[year][day].expected_interface_pf_q[dn, p]) * s_base
+                    interface_v_vars[node_id][year][day][p] = v_mag
+                    interface_pf_vars['tso'][node_id][year][day]['p'][p] = interface_pf_p
+                    interface_pf_vars['tso'][node_id][year][day]['q'][p] = interface_pf_q
+
+    # Get initial Shared ESS values
+    for year in transmission_network.years:
+        for day in transmission_network.days:
+            s_base = transmission_network.network[year][day].baseMVA
+            for dn in tso_model[year][day].active_distribution_networks:
+                node_id = transmission_network.active_distribution_network_nodes[dn]
+                shared_ess_idx = transmission_network.network[year][day].get_shared_energy_storage_idx(node_id)
+                for p in tso_model[year][day].periods:
+                    shared_ess_p = pe.value(tso_model[year][day].expected_shared_ess_p[shared_ess_idx, p]) * s_base
+                    sess_vars[node_id][year][day]['p'][p] = shared_ess_p
+
+    return tso_model
+
+
+def create_distribution_networks_models(distribution_networks, interface_vars, sess_vars, candidate_solution):
+
+    dso_models = dict()
+
+    for node_id in distribution_networks:
+
+        distribution_network = distribution_networks[node_id]
+
+        # Build model, fix candidate solution, and Run S-MPOPF model
+        dso_model = distribution_network.build_model()
+        distribution_network.update_model_with_candidate_solution(dso_model, candidate_solution)
+        distribution_network.optimize(dso_model)
+
+        # Get initial interface PF values
+        for year in distribution_network.years:
+            for day in distribution_network.days:
+                s_base = distribution_network.network[year][day].baseMVA
+                for p in dso_model[year][day].periods:
+                    interface_pf_p = pe.value(dso_model[year][day].expected_interface_pf_p[p]) * s_base
+                    interface_pf_q = pe.value(dso_model[year][day].expected_interface_pf_q[p]) * s_base
+                    interface_vars[node_id][year][day]['p'][p] = interface_pf_p
+                    interface_vars[node_id][year][day]['q'][p] = interface_pf_q
+
+        # Get initial Shared ESS values
+        for year in distribution_network.years:
+            for day in distribution_network.days:
+                s_base = distribution_network.network[year][day].baseMVA
+                for p in dso_model[year][day].periods:
+                    p_ess = pe.value(dso_model[year][day].expected_shared_ess_p[p]) * s_base
+                    sess_vars[node_id][year][day]['p'][p] = p_ess
+
+        dso_models[node_id] = dso_model
+
+    return dso_models
+
+
+def create_shared_energy_storage_model(shared_ess_data, candidate_solution):
+
+    esso_model = shared_ess_data.build_subproblem()
+    shared_ess_data.update_model_with_candidate_solution(esso_model, candidate_solution)
+    shared_ess_data.optimize(esso_model)
+
+    return esso_model
+
+
+def update_transmission_model_to_admm(transmission_network, model, initial_interface_pf, params):
+
+    for year in transmission_network.years:
+        for day in transmission_network.days:
+
+            init_of_value = pe.value(model[year][day].objective)
+            s_base = transmission_network.network[year][day].baseMVA
+
+            # Free Pc and Qc at the connection point with distribution networks
+            for node_id in transmission_network.active_distribution_network_nodes:
+                node_idx = transmission_network.network[year][day].get_node_idx(node_id)
+                for s_m in model[year][day].scenarios_market:
+                    for s_o in model[year][day].scenarios_operation:
+                        for p in model[year][day].periods:
+                            model[year][day].pc[node_idx, s_m, s_o, p].fixed = False
+                            model[year][day].pc[node_idx, s_m, s_o, p].setub(None)
+                            model[year][day].pc[node_idx, s_m, s_o, p].setlb(None)
+                            model[year][day].qc[node_idx, s_m, s_o, p].fixed = False
+                            model[year][day].qc[node_idx, s_m, s_o, p].setub(None)
+                            model[year][day].qc[node_idx, s_m, s_o, p].setlb(None)
+
+            # Add ADMM variables
+            model[year][day].rho = pe.Var(domain=pe.NonNegativeReals)
+            model[year][day].rho.fix(params.rho[transmission_network.name])
+
+            # Power Flow - Consensus
+            model[year][day].p_pf_req = pe.Var(model[year][day].active_distribution_networks, model[year][day].periods, domain=pe.Reals)  # Active power - requested by distribution networks
+            model[year][day].q_pf_req = pe.Var(model[year][day].active_distribution_networks, model[year][day].periods, domain=pe.Reals)  # Reactive power - requested by distribution networks
+            model[year][day].dual_pf_p_req = pe.Var(model[year][day].active_distribution_networks, model[year][day].periods, domain=pe.Reals)  # Dual variable - active power requested
+            model[year][day].dual_pf_q_req = pe.Var(model[year][day].active_distribution_networks, model[year][day].periods, domain=pe.Reals)  # Dual variable - reactive power requested
+
+            # Shared Energy Storage - Consensus
+            model[year][day].p_ess_req = pe.Var(model[year][day].shared_energy_storages, model[year][day].periods, domain=pe.Reals)  # Shared ESS - Charging requested by DSO
+            model[year][day].dual_ess_p = pe.Var(model[year][day].shared_energy_storages, model[year][day].periods, domain=pe.Reals)  # Dual variable - Shared ESS active power
+
+            # Objective function - augmented Lagrangian
+            obj = model[year][day].objective.expr / abs(init_of_value)
+            for dn in model[year][day].active_distribution_networks:
+                node_id = transmission_network.active_distribution_network_nodes[dn]
+                for p in model[year][day].periods:
+                    init_p = initial_interface_pf['dso'][node_id][year][day]['p'][p] / s_base
+                    init_q = initial_interface_pf['dso'][node_id][year][day]['q'][p] / s_base
+                    constraint_p_req = (model[year][day].expected_interface_pf_p[dn, p] - model[year][day].p_pf_req[dn, p]) / abs(init_p)
+                    constraint_q_req = (model[year][day].expected_interface_pf_q[dn, p] - model[year][day].q_pf_req[dn, p]) / abs(init_q)
+                    obj += model[year][day].dual_pf_p_req[dn, p] * constraint_p_req
+                    obj += model[year][day].dual_pf_q_req[dn, p] * constraint_q_req
+                    obj += (model[year][day].rho / 2) * constraint_p_req ** 2
+                    obj += (model[year][day].rho / 2) * constraint_q_req ** 2
+
+            for e in model[year][day].active_distribution_networks:
+                #rating = transmission_network.network[year][day].shared_energy_storages[e].s
+                rating = 10.00
+                if rating == 0.0:
+                    continue
+                for p in model[year][day].periods:
+                    constraint_ess_p = (model[year][day].expected_shared_ess_p[e, p] - model[year][day].p_ess_req[e, p]) / (2 * rating)
+                    obj += model[year][day].dual_ess_p[e, p] * constraint_ess_p
+                    obj += (model[year][day].rho / 2) * constraint_ess_p ** 2
+
+            model[year][day].objective.expr = obj
+
+
+def update_distribution_models_to_admm(distribution_networks, models, initial_interface_pf, params):
+
+    for node_id in distribution_networks:
+
+        dso_model = models[node_id]
+        distribution_network = distribution_networks[node_id]
+
+        # Free voltage at the connection point with the transmission network
+        # Free Pg and Qg at the connection point with the transmission network
+        for year in distribution_network.years:
+            for day in distribution_network.days:
+
+                ref_node_id = distribution_network.network[year][day].get_reference_node_id()
+                ref_node_idx = distribution_network.network[year][day].get_node_idx(ref_node_id)
+                ref_gen_idx = distribution_network.network[year][day].get_reference_gen_idx()
+                for s_m in dso_model[year][day].scenarios_market:
+                    for s_o in dso_model[year][day].scenarios_operation:
+                        for p in dso_model[year][day].periods:
+                            dso_model[year][day].e[ref_node_idx, s_m, s_o, p].fixed = False
+                            dso_model[year][day].e[ref_node_idx, s_m, s_o, p].setub(None)
+                            dso_model[year][day].e[ref_node_idx, s_m, s_o, p].setlb(None)
+
+                            dso_model[year][day].pg[ref_gen_idx, s_m, s_o, p].fixed = False
+                            dso_model[year][day].pg[ref_gen_idx, s_m, s_o, p].setub(None)
+                            dso_model[year][day].pg[ref_gen_idx, s_m, s_o, p].setlb(None)
+                            dso_model[year][day].qg[ref_gen_idx, s_m, s_o, p].fixed = False
+                            dso_model[year][day].qg[ref_gen_idx, s_m, s_o, p].setub(None)
+                            dso_model[year][day].qg[ref_gen_idx, s_m, s_o, p].setlb(None)
+
+                # Add ADMM variables
+                dso_model[year][day].rho = pe.Var(domain=pe.NonNegativeReals)
+                dso_model[year][day].rho.fix(params.rho[distribution_network.network[year][day].name])
+
+                dso_model[year][day].p_pf_req = pe.Var(dso_model[year][day].periods, domain=pe.Reals)    # Active power - requested by transmission network
+                dso_model[year][day].q_pf_req = pe.Var(dso_model[year][day].periods, domain=pe.Reals)    # Reactive power - requested by transmission network
+                dso_model[year][day].dual_pf_p = pe.Var(dso_model[year][day].periods, domain=pe.Reals)   # Dual variable - active power
+                dso_model[year][day].dual_pf_q = pe.Var(dso_model[year][day].periods, domain=pe.Reals)   # Dual variable - reactive power
+
+                dso_model[year][day].p_ess_req = pe.Var(dso_model[year][day].periods, domain=pe.Reals)   # Shared ESS - Charging requested by TSO
+                dso_model[year][day].dual_ess_p = pe.Var(dso_model[year][day].periods, domain=pe.Reals)  # Dual variable - Shared ESS active power
+
+                # Objective function - augmented Lagrangian
+                obj = dso_model[year][day].objective.expr
+
+                # Augmented Lagrangian -- Interface power flow (residual balancing)
+                s_base = distribution_network.network[year][day].baseMVA
+                for p in dso_model[year][day].periods:
+                    init_p = initial_interface_pf[node_id][year][day]['p'][p] / s_base
+                    init_q = initial_interface_pf[node_id][year][day]['q'][p] / s_base
+                    constraint_p_req = (dso_model[year][day].expected_interface_pf_p[p] - dso_model[year][day].p_pf_req[p]) / abs(init_p)
+                    constraint_q_req = (dso_model[year][day].expected_interface_pf_q[p] - dso_model[year][day].q_pf_req[p]) / abs(init_q)
+                    obj += (dso_model[year][day].dual_pf_p[p]) * (constraint_p_req)
+                    obj += (dso_model[year][day].dual_pf_q[p]) * (constraint_q_req)
+                    obj += (dso_model[year][day].rho / 2) * (constraint_p_req) ** 2
+                    obj += (dso_model[year][day].rho / 2) * (constraint_q_req) ** 2
+
+                # Augmented Lagrangian -- Shared ESS (residual balancing)
+                rating = distribution_network.network[year][day].shared_energy_storages[0].s
+                rating = 10.00
+                if rating == 0.0:
+                    continue
+                for p in dso_model[year][day].periods:
+                    constraint_ess_p = (dso_model[year][day].expected_shared_ess_p[p] - dso_model[year][day].p_ess_req[p]) / (2 * rating)
+                    obj += dso_model[year][day].dual_ess_p[p] * (constraint_ess_p)
+                    obj += (dso_model[year][day].rho / 2) * (constraint_ess_p) ** 2
+
+                dso_model[year][day].objective.expr = obj
+
+
+def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
+
+    repr_years = [year for year in shared_ess_data.years]
+
+    # Add ADMM variables
+    model.rho = pe.Var(domain=pe.NonNegativeReals)
+    model.rho.fix(params.rho['ESSO'])
+
+    # Active and Reactive power requested by TSO and DSOs
+    model.p_req_transm = pe.Var(model.energy_storages, model.years, model.days, model.periods, domain=pe.Reals)   # Active power - transmission network
+    model.p_req_distr = pe.Var(model.energy_storages, model.years, model.days, model.periods, domain=pe.Reals)    # Active power - distribution networks
+    model.dual_p_transm = pe.Var(model.energy_storages, model.years, model.days, model.periods, domain=pe.Reals)  # Dual variable - active power - transmission network
+    model.dual_p_distr = pe.Var(model.energy_storages, model.years, model.days, model.periods, domain=pe.Reals)   # Dual variable - active power - distribution networks
+
+    # Objective function - augmented Lagrangian
+    obj = model.objective.expr
+    for e in model.energy_storages:
+        for y in model.years:
+            year = repr_years[y]
+            rating_s = shared_ess_data.shared_energy_storages[year][e].s
+            rating_s = 10.00
+            if rating_s == 0.0:
+                continue
+            for d in model.days:
+                for p in model.periods:
+                    p_ess = model.es_expected_p[e, y, d, p]
+                    constraint_p_transm = (p_ess - model.p_req_transm[e, y, d, p]) / (2 * rating_s)
+                    constraint_p_distr = (p_ess - model.p_req_distr[e, y, d, p]) / (2 * rating_s)
+                    obj += model.dual_p_transm[e, y, d, p] * (constraint_p_transm)
+                    obj += model.dual_p_distr[e, y, d, p] * (constraint_p_distr)
+                    obj += (model.rho / 2) * (constraint_p_transm) ** 2
+                    obj += (model.rho / 2) * (constraint_p_distr) ** 2
+
+    model.objective.expr = obj
+
+    return model
+
+
+def update_transmission_coordination_model_and_solve(transmission_network, model, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
+
+    print('[INFO] Updating transmission network...')
+
+    for year in transmission_network.years:
+        for day in transmission_network.days:
+
+            s_base = transmission_network.network[year][day].baseMVA
+
+            # Update Rho parameter
+            model[year][day].rho.fix(params.rho[transmission_network.name])
+
+            for dn in model[year][day].active_distribution_networks:
+
+                node_id = transmission_network.active_distribution_network_nodes[dn]
+
+                # Update interface PF power requests
+                for p in model[year][day].periods:
+                    model[year][day].dual_pf_p_req[dn, p].fix(dual_pf[node_id][year][day]['p'][p] / s_base)
+                    model[year][day].dual_pf_q_req[dn, p].fix(dual_pf[node_id][year][day]['q'][p] / s_base)
+                    model[year][day].p_pf_req[dn, p].fix(pf_req[node_id][year][day]['p'][p] / s_base)
+                    model[year][day].q_pf_req[dn, p].fix(pf_req[node_id][year][day]['q'][p] / s_base)
+
+                # Update shared ESS capacity and power requests
+                shared_ess_idx = transmission_network.network[year][day].get_shared_energy_storage_idx(node_id)
+                model[year][day].shared_es_s_rated[shared_ess_idx].fix(ess_capacity['s'][node_id][year] / s_base)
+                model[year][day].shared_es_e_rated[shared_ess_idx].fix(ess_capacity['e'][node_id][year] / s_base)
+                for p in model[year][day].periods:
+                    model[year][day].dual_ess_p[shared_ess_idx, p].fix(dual_ess[node_id][year][day]['p'][p] / s_base)
+                    model[year][day].p_ess_req[shared_ess_idx, p].fix(ess_req[node_id][year][day]['p'][p] / s_base)
+
+    # Solve!
+    res = transmission_network.optimize(model, from_warm_start=True)
+    for year in transmission_network.years:
+        for day in transmission_network.days:
+            if res[year][day].solver.status != po.SolverStatus.ok:
+                print(f'[ERROR] Network {model[year][day].name} did not converge!')
+                exit(ERROR_NETWORK_OPTIMIZATION)
+
+    return res
+
+
+def update_distribution_coordination_models_and_solve(distribution_networks, models, interface_vmag, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
+
+    print('[INFO] Updating distribution networks...')
+    res = dict()
+
+    for node_id in distribution_networks:
+
+        model = models[node_id]
+        distribution_network = distribution_networks[node_id]
+        rho = params.rho[distribution_network.name]
+
+        #print('\t\t - Updating active distribution network connected to node {}...'.format(node_id))
+
+        for year in distribution_network.years:
+            for day in distribution_network.days:
+
+                s_base = distribution_network.network[year][day].baseMVA
+                ref_node_id = distribution_network.network[year][day].get_reference_node_id()
+
+                model[year][day].rho.fix(rho)
+
+                # Update VOLTAGE variables at connection point
+                for p in model[year][day].periods:
+                    model[year][day].expected_interface_vmag[p].fix(interface_vmag[node_id][year][day][p])
+
+                # Update POWER FLOW variables at connection point
+                for p in model[year][day].periods:
+                    model[year][day].dual_pf_p[p].fix(dual_pf[node_id][year][day]['p'][p] / s_base)
+                    model[year][day].dual_pf_q[p].fix(dual_pf[node_id][year][day]['q'][p] / s_base)
+                    model[year][day].p_pf_req[p].fix(pf_req[node_id][year][day]['p'][p] / s_base)
+                    model[year][day].q_pf_req[p].fix(pf_req[node_id][year][day]['q'][p] / s_base)
+
+                # Update SHARED ENERGY STORAGE variables (if existent)
+                shared_ess_idx = distribution_network.network[year][day].get_shared_energy_storage_idx(ref_node_id)
+                model[year][day].shared_es_s_rated[shared_ess_idx].fix(ess_capacity['s'][node_id][year] / s_base)
+                model[year][day].shared_es_e_rated[shared_ess_idx].fix(ess_capacity['e'][node_id][year] / s_base)
+                for p in model[year][day].periods:
+                    model[year][day].dual_ess_p[p].fix(dual_ess[node_id][year][day]['p'][p] / s_base)
+                    model[year][day].p_ess_req[p].fix(ess_req[node_id][year][day]['p'][p] / s_base)
+
+        # Solve!
+        res[node_id] = distribution_network.optimize(model, from_warm_start=True)
+        for year in distribution_network.years:
+            for day in distribution_network.days:
+                if res[node_id][year][day].solver.status != po.SolverStatus.ok:
+                    print(f'[ERROR] Network {model[year][day].name} did not converge!')
+                    exit(ERROR_NETWORK_OPTIMIZATION)
+
+    return res
+
+
+def update_shared_energy_storages_coordination_model_and_solve(planning_problem, model, ess_req, dual_ess, params):
+
+    print('[INFO] Updating Shared ESS...')
+    shared_ess_data = planning_problem.shared_ess_data
+    days = [day for day in planning_problem.days]
+    years = [year for year in planning_problem.years]
+
+    model.rho.fix(params.rho['ESSO'])
+
+    for e in model.energy_storages:
+        for y in model.years:
+            year = years[y]
+            node_id = shared_ess_data.shared_energy_storages[year][e].bus
+            for d in model.days:
+                day = days[d]
+                for p in model.periods:
+                    model.dual_p_transm[e, y, d, p].fix(dual_ess['tso'][node_id][year][day]['p'][p])
+                    model.dual_p_distr[e, y, d, p].fix(dual_ess['dso'][node_id][year][day]['p'][p])
+                    model.p_req_transm[e, y, d, p].fix(ess_req['tso'][node_id][year][day]['p'][p])
+                    model.p_req_distr[e, y, d, p].fix(ess_req['dso'][node_id][year][day]['p'][p])
+
+    # Solve!
+    res = shared_ess_data.optimize(model)
+    if res.solver.status != po.SolverStatus.ok:
+        print('[ERROR] Did not converge!')
+        exit(ERROR_SHARED_ESS_OPTIMIZATION)
+
+    return res
+
+
+def _update_admm_consensus_variables(planning_problem, tso_model, dso_models, esso_model, consensus_vars, dual_vars, params):
+    _update_interface_power_flow_variables(planning_problem, tso_model, dso_models, consensus_vars['interface'], dual_vars['pf'], params)
+    _update_shared_energy_storage_variables(planning_problem, tso_model, dso_models, esso_model, consensus_vars['ess'], dual_vars['ess'], params)
+
+
+def _update_interface_power_flow_variables(planning_problem, tso_model, dso_models, interface_vars, dual_vars, params):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+
+    # Transmission network - Update Vmag and PF at the TN-DN interface
+    for dn in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[dn]
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                s_base = planning_problem.transmission_network.network[year][day].baseMVA
+                for p in tso_model[year][day].periods:
+                    interface_vars['v'][node_id][year][day][p] = pe.value(tso_model[year][day].expected_interface_vmag[dn, p])
+                    interface_vars['pf']['tso'][node_id][year][day]['p'][p] = pe.value(tso_model[year][day].expected_interface_pf_p[dn, p]) * s_base
+                    interface_vars['pf']['tso'][node_id][year][day]['q'][p] = pe.value(tso_model[year][day].expected_interface_pf_q[dn, p]) * s_base
+
+    # Distribution Network - Update PF at the TN-DN interface
+    for node_id in distribution_networks:
+        distribution_network = distribution_networks[node_id]
+        dso_model = dso_models[node_id]
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                s_base = distribution_network.network[year][day].baseMVA
+                for p in dso_model[year][day].periods:
+                    interface_vars['pf']['dso'][node_id][year][day]['p'][p] = pe.value(dso_model[year][day].expected_interface_pf_p[p]) * s_base
+                    interface_vars['pf']['dso'][node_id][year][day]['q'][p] = pe.value(dso_model[year][day].expected_interface_pf_q[p]) * s_base
+
+    # Update Lambdas
+    for node_id in distribution_networks:
+        distribution_network = distribution_networks[node_id]
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                for p in range(planning_problem.num_instants):
+
+                    error_p_pf = interface_vars['pf']['tso'][node_id][year][day]['p'][p] - interface_vars['pf']['dso'][node_id][year][day]['p'][p]
+                    error_q_pf = interface_vars['pf']['tso'][node_id][year][day]['q'][p] - interface_vars['pf']['dso'][node_id][year][day]['q'][p]
+
+                    dual_vars['tso'][node_id][year][day]['p'][p] += params.rho[transmission_network.name] * (error_p_pf)
+                    dual_vars['tso'][node_id][year][day]['q'][p] += params.rho[transmission_network.name] * (error_q_pf)
+                    dual_vars['dso'][node_id][year][day]['p'][p] += params.rho[distribution_network.name] * (-error_p_pf)
+                    dual_vars['dso'][node_id][year][day]['q'][p] += params.rho[distribution_network.name] * (-error_q_pf)
+
+                '''
+                print(f"Ptso[{node_id},{year},{day}] = {interface_vars['pf']['tso'][node_id][year][day]['p']}")
+                print(f"Pdso[{node_id},{year},{day}] = {interface_vars['pf']['dso'][node_id][year][day]['p']}")
+                print(f"Qtso[{node_id},{year},{day}] = {interface_vars['pf']['tso'][node_id][year][day]['q']}")
+                print(f"Qdso[{node_id},{year},{day}] = {interface_vars['pf']['dso'][node_id][year][day]['q']}")
+                '''
+
+
+def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_models, sess_model, shared_ess_vars, dual_vars, params):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+    shared_ess_data = planning_problem.shared_ess_data
+    repr_days = [day for day in planning_problem.days]
+    repr_years = [year for year in planning_problem.years]
+
+    for node_id in distribution_networks:
+
+        dso_model = dso_models[node_id]
+        distribution_network = distribution_networks[node_id]
+
+        # Shared Energy Storage - Power requested by ESSO, and Capacity available
+        for y in sess_model.years:
+            year = repr_years[y]
+            shared_ess_idx = shared_ess_data.get_shared_energy_storage_idx(node_id)
+            shared_ess_vars['capacity']['s'][node_id][year] = abs(pe.value(sess_model.es_s_rated[shared_ess_idx, y]))
+            shared_ess_vars['capacity']['e'][node_id][year] = abs(pe.value(sess_model.es_e_rated[shared_ess_idx, y]))
+            for d in sess_model.days:
+                day = repr_days[d]
+                shared_ess_vars['esso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
+                for p in sess_model.periods:
+                    shared_ess_vars['esso'][node_id][year][day]['p'][p] = abs(pe.value(sess_model.es_expected_p[shared_ess_idx, y, d, p]))
+
+        # Shared Energy Storage - Power requested by TSO
+        for y in range(len(planning_problem.years)):
+            year = repr_years[y]
+            for d in range(len(repr_days)):
+                day = repr_days[d]
+                s_base = transmission_network.network[year][day].baseMVA
+                shared_ess_idx = transmission_network.network[year][day].get_shared_energy_storage_idx(node_id)
+                shared_ess_vars['tso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
+                for p in tso_model[year][day].periods:
+                    shared_ess_vars['tso'][node_id][year][day]['p'][p] = abs(pe.value(tso_model[year][day].expected_shared_ess_p[shared_ess_idx, p])) * s_base
+
+        # Shared Energy Storage - Power requested by DSO
+        for y in range(len(planning_problem.years)):
+            year = repr_years[y]
+            for d in range(len(repr_days)):
+                day = repr_days[d]
+                s_base = distribution_network.network[year][day].baseMVA
+                shared_ess_vars['dso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
+                for p in dso_model[year][day].periods:
+                    shared_ess_vars['dso'][node_id][year][day]['p'][p] = abs(pe.value(dso_model[year][day].expected_shared_ess_p[p])) * s_base
+
+        '''
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                print(f"Preq, TN, Node {node_id}, {year}, {day} = {shared_ess_vars['tso'][node_id][year][day]['p']}")
+                print(f"Preq, DN, Node {node_id}, {year}, {day} = {shared_ess_vars['dso'][node_id][year][day]['p']}")
+                print(f"Preq, ESS, Node {node_id}, {year}, {day} = {shared_ess_vars['esso'][node_id][year][day]['p']}")
+        '''
+
+        # Update dual variables Shared ESS
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                for t in range(planning_problem.num_instants):
+                    error_p_ess_transm = shared_ess_vars['tso'][node_id][year][day]['p'][t] - shared_ess_vars['esso'][node_id][year][day]['p'][t]
+                    error_p_ess_distr = shared_ess_vars['dso'][node_id][year][day]['p'][t] - shared_ess_vars['esso'][node_id][year][day]['p'][t]
+                    dual_vars['tso'][node_id][year][day]['p'][t] += params.rho[distribution_network.name] * (error_p_ess_transm)
+                    dual_vars['dso'][node_id][year][day]['p'][t] += params.rho[distribution_network.name] * (error_p_ess_distr)
+
+
+def compute_primal_value(planning_problem, tso_model, esso_model):
+
+    transmission_network = planning_problem.transmission_network
+    shared_ess_data = planning_problem.shared_ess_data
+
+    primal_value = 0.0
+    primal_value += transmission_network.compute_primal_value(tso_model)
+    if esso_model:
+        primal_value += shared_ess_data.compute_primal_value(esso_model)
+
+    return primal_value
+
+
+def check_admm_convergence(planning_problem, consensus_vars, params):
+    if primal_convergence(planning_problem, consensus_vars, params):
+        if dual_convergence(planning_problem, consensus_vars, params):
+            return True
+    return False
+
+
+def primal_convergence(planning_problem, consensus_vars, params):
+
+    interface_vars = consensus_vars['interface']['pf']
+    shared_ess_vars = consensus_vars['ess']
+    sum_sqr = 0.0
+    num_elems = 0
+
+    # Interface Power Flow
+    for node_id in planning_problem.active_distribution_network_nodes:
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                for p in range(planning_problem.num_instants):
+                    sum_sqr += (interface_vars['tso'][node_id][year][day]['p'][p] - interface_vars['dso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += (interface_vars['tso'][node_id][year][day]['q'][p] - interface_vars['dso'][node_id][year][day]['q'][p]) ** 2
+                    num_elems += 2
+
+    sum_total = sqrt(sum_sqr)
+    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=0.50, abs_tol=params.tol):
+        print('Convergence primal PF failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    else:
+        print('Convergence primal PF ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
+
+    # Shared Energy Storage
+    for node_id in planning_problem.active_distribution_network_nodes:
+        shared_ess_idx = planning_problem.shared_ess_data.get_shared_energy_storage_idx(node_id)
+        for year in planning_problem.years:
+            if planning_problem.shared_ess_data.shared_energy_storages[year][shared_ess_idx].s == 0:
+                continue
+            for day in planning_problem.days:
+                for p in range(planning_problem.num_instants):
+                    sum_sqr += (shared_ess_vars['tso'][node_id][year][day]['p'][p] - shared_ess_vars['esso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += (shared_ess_vars['dso'][node_id][year][day]['p'][p] - shared_ess_vars['esso'][node_id][year][day]['p'][p]) ** 2
+                    num_elems += 2
+
+    sum_total = sqrt(sum_sqr)
+    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
+        print('Convergence primal failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+        return False
+
+    print('Convergence primal ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    return True
+
+
+def dual_convergence(planning_problem, consensus_vars, params):
+
+    rho_esso = params.rho['ESSO']
+    rho_tso = params.rho[planning_problem.transmission_network.name]
+    interface_vars = consensus_vars['interface']['pf']
+    shared_ess_vars = consensus_vars['ess']
+    sum_sqr = 0.0
+    num_elems = 0
+
+    # Interface Power Flow
+    for node_id in planning_problem.distribution_networks:
+        rho_dso = params.rho[planning_problem.distribution_networks[node_id].name]
+        rho_pf = (rho_tso + rho_dso) * 0.50
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                for p in range(planning_problem.num_instants):
+                    sum_sqr += rho_pf * (interface_vars['tso'][node_id][year][day]['p'][p] - interface_vars['dso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += rho_pf * (interface_vars['tso'][node_id][year][day]['q'][p] - interface_vars['dso'][node_id][year][day]['q'][p]) ** 2
+                    num_elems += 2
+
+    sum_total = sqrt(sum_sqr)
+    if sum_total > params.tol * sqrt(num_elems) and isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=0.50, abs_tol=params.tol):
+        print('Convergence dual PF failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    else:
+        print('Convergence dual PF ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
+
+    # Shared Energy Storage
+    for node_id in planning_problem.distribution_networks:
+        distribution_network = planning_problem.distribution_networks[node_id]
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                rho_dso = params.rho[distribution_network.network[year][day].name]
+                rho_sess = (rho_esso + rho_dso) * 0.50
+                for p in range(planning_problem.num_instants):
+                    sum_sqr += rho_sess * (shared_ess_vars['tso'][node_id][year][day]['p'][p] - shared_ess_vars['esso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += rho_sess * (shared_ess_vars['dso'][node_id][year][day]['p'][p] - shared_ess_vars['esso'][node_id][year][day]['p'][p]) ** 2
+                    num_elems += 2
+
+    sum_total = sqrt(sum_sqr)
+    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
+        print('Convergence dual failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+        return False
+
+    print('Convergence dual ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    return True
+
+
+# ======================================================================================================================
+#  PLANNING PROBLEM read functions
+# ======================================================================================================================
+def _read_planning_problem(planning_problem):
+
+    try:
+        print(f'[INFO] Reading PROBLEM SPECIFICATION from file {planning_problem.filename} ...')
+
+        # Create results folder
+        if not os.path.exists(planning_problem.results_dir):
+            os.makedirs(planning_problem.results_dir)
+
+        # Create plots (results) folder
+        if not os.path.exists(planning_problem.plots_dir):
+            os.makedirs(planning_problem.plots_dir)
+
+        # Create diagrams folder
+        if not os.path.exists(planning_problem.diagrams_dir):
+            os.makedirs(planning_problem.diagrams_dir)
+
+        filename = os.path.join(planning_problem.data_dir, planning_problem.filename)
+        with open(filename, 'r') as file:
+
+            lines = file.read().splitlines()
+
+            for i in range(len(lines)):
+
+                tokens = lines[i].split(':')
+
+                if tokens[0] == 'Years':
+                    num_years = int(tokens[1])
+                    for j in range(num_years):
+                        year_tokens = lines[i + j + 1].split('\t')
+                        year_name = year_tokens[0]
+                        num_years = int(year_tokens[1])
+                        if num_years > 0:
+                            planning_problem.years[year_name] = num_years
+
+                elif tokens[0] == 'Days':
+                    num_days = int(tokens[1])
+                    for j in range(num_days):
+                        day_tokens = lines[i + j + 1].split('\t')
+                        day_name = day_tokens[0]
+                        num_days = int(day_tokens[1])
+                        if num_days > 0:
+                            planning_problem.days[day_name] = num_days
+
+                elif tokens[0] == 'NumInstants':
+                    planning_problem.num_instants = int(tokens[1])
+
+                elif tokens[0] == 'Discount Factor':
+                    planning_problem.discount_factor = float(tokens[1])
+
+                elif tokens[0] == 'Market Data':
+                    i = i + 1
+                    print('[INFO] Reading MARKET DATA from file(s)...')
+                    planning_problem.market_data_file = lines[i].strip()
+                    planning_problem.read_market_data_from_file()
+
+                elif tokens[0] == 'Distribution Networks':
+
+                    print('[INFO] Reading DISTRIBUTION NETWORK DATA from file(s)...')
+
+                    num_dist_networks = int(tokens[1])
+
+                    for _ in range(num_dist_networks):
+
+                        i = i + 1
+                        dn_tokens = lines[i].split('\t')
+
+                        network_name = dn_tokens[0]             # Network filename
+                        params_file = dn_tokens[1]              # Params filename
+                        connection_nodeid = int(dn_tokens[2])   # Connection node ID
+
+                        distribution_network = NetworkPlanning()
+                        distribution_network.name = network_name
+                        distribution_network.is_transmission = False
+                        distribution_network.data_dir = planning_problem.data_dir
+                        distribution_network.results_dir = planning_problem.results_dir
+                        distribution_network.plots_dir = planning_problem.plots_dir
+                        distribution_network.diagrams_dir = planning_problem.diagrams_dir
+                        distribution_network.years = planning_problem.years
+                        distribution_network.days = planning_problem.days
+                        distribution_network.num_instants = planning_problem.num_instants
+                        distribution_network.discount_factor = planning_problem.discount_factor
+                        distribution_network.prob_market_scenarios = planning_problem.prob_market_scenarios
+                        distribution_network.cost_energy_p = planning_problem.cost_energy_p
+                        distribution_network.cost_energy_q = planning_problem.cost_energy_q
+                        distribution_network.params_file = params_file
+                        distribution_network.read_network_parameters()
+                        distribution_network.read_network_planning_data()
+                        distribution_network.tn_connection_nodeid = connection_nodeid
+
+                        planning_problem.distribution_networks[connection_nodeid] = distribution_network
+                    planning_problem.active_distribution_network_nodes = [node_id for node_id in planning_problem.distribution_networks]
+
+                elif tokens[0] == 'Transmission Network':
+
+                    print('[INFO] Reading TRANSMISSION NETWORK DATA from file(s)...')
+
+                    i = i + 1
+                    tn_tokens = lines[i].split('\t')
+
+                    network_name = tn_tokens[0]     # Network filename
+                    params_file = tn_tokens[1]      # Params filename
+
+                    transmission_network = NetworkPlanning()
+                    transmission_network.name = network_name
+                    transmission_network.is_transmission = True
+                    transmission_network.data_dir = planning_problem.data_dir
+                    transmission_network.results_dir = planning_problem.results_dir
+                    transmission_network.plots_dir = planning_problem.plots_dir
+                    transmission_network.diagrams_dir = planning_problem.diagrams_dir
+                    transmission_network.years = planning_problem.years
+                    transmission_network.days = planning_problem.days
+                    transmission_network.num_instants = planning_problem.num_instants
+                    transmission_network.discount_factor = planning_problem.discount_factor
+                    transmission_network.prob_market_scenarios = planning_problem.prob_market_scenarios
+                    transmission_network.cost_energy_p = planning_problem.cost_energy_p
+                    transmission_network.cost_energy_q = planning_problem.cost_energy_q
+                    transmission_network.params_file = params_file
+                    transmission_network.read_network_parameters()
+                    transmission_network.read_network_planning_data()
+
+                    transmission_network.active_distribution_network_nodes = [node_id for node_id in planning_problem.distribution_networks]
+                    for year in transmission_network.years:
+                        for day in transmission_network.days:
+                            transmission_network.network[year][day].active_distribution_network_nodes = transmission_network.active_distribution_network_nodes
+                    planning_problem.transmission_network = transmission_network
+
+                elif tokens[0] == 'Shared Energy Storage':
+
+                    print('[INFO] Reading SHARED ESS DATA from file(s)...')
+
+                    i = i + 1
+                    ess_tokens = lines[i].split('\t')  # Shared ESS filename, params filename
+
+                    params_file = ess_tokens[0]
+                    data_file = ess_tokens[1]
+
+                    shared_ess_data = SharedEnergyStorageData()
+                    shared_ess_data.name = planning_problem.name
+                    shared_ess_data.data_dir = planning_problem.data_dir
+                    shared_ess_data.results_dir = planning_problem.results_dir
+                    shared_ess_data.plots_dir = planning_problem.plots_dir
+                    shared_ess_data.years = planning_problem.years
+                    shared_ess_data.days = planning_problem.days
+                    shared_ess_data.num_instants = planning_problem.num_instants
+                    shared_ess_data.discount_factor = planning_problem.discount_factor
+                    shared_ess_data.prob_market_scenarios = planning_problem.prob_market_scenarios
+                    shared_ess_data.cost_energy_p = planning_problem.cost_energy_p
+                    shared_ess_data.cost_energy_q = planning_problem.cost_energy_q
+                    shared_ess_data.cost_secondary_reserve = planning_problem.cost_secondary_reserve
+                    shared_ess_data.cost_tertiary_reserve_up = planning_problem.cost_tertiary_reserve_up
+                    shared_ess_data.cost_tertiary_reserve_down = planning_problem.cost_tertiary_reserve_down
+                    shared_ess_data.params_file = params_file
+                    shared_ess_data.read_parameters_from_file()
+                    shared_ess_data.create_shared_energy_storages(planning_problem)
+                    shared_ess_data.data_file = data_file
+                    shared_ess_data.read_shared_energy_storage_data_from_file()
+                    shared_ess_data.active_distribution_network_nodes = [node_id for node_id in planning_problem.distribution_networks]
+
+                    planning_problem.shared_ess_data = shared_ess_data
+
+                elif tokens[0] == 'Planning Parameters':
+                    i = i + 1
+                    planning_problem.params_file = lines[i].strip()
+                    planning_problem.read_planning_parameters_from_file()
+
+    except:
+        print('[ERROR] Reading planning problem description! Exiting...')
+        file.close()
+        exit(ERROR_SPECIFICATION_FILE)
+    finally:
+        file.close()
+
+    _add_shared_energy_storage_to_transmission_network(planning_problem)
+    _add_shared_energy_storage_to_distribution_network(planning_problem)
+
+
+# ======================================================================================================================
+#  MARKET DATA read functions
+# ======================================================================================================================
+def _read_market_data_from_file(planning_problem):
+
+    try:
+        for year in planning_problem.years:
+            filename = os.path.join(planning_problem.data_dir, 'Market Data', f'{planning_problem.market_data_file}_{year}.xlsx')
+            num_scenarios, prob_scenarios = _get_market_scenarios_info_from_excel_file(filename, 'Scenarios')
+            planning_problem.prob_market_scenarios = prob_scenarios
+            planning_problem.cost_energy_p[year] = dict()
+            planning_problem.cost_energy_q[year] = dict()
+            planning_problem.cost_secondary_reserve[year] = dict()
+            planning_problem.cost_tertiary_reserve_up[year] = dict()
+            planning_problem.cost_tertiary_reserve_down[year] = dict()
+            for day in planning_problem.days:
+                planning_problem.cost_energy_p[year][day] = _get_market_costs_from_excel_file(filename, f'Cp, {day}', num_scenarios)
+                planning_problem.cost_energy_q[year][day] = _get_market_costs_from_excel_file(filename, f'Cq, {day}', num_scenarios)
+                planning_problem.cost_secondary_reserve[year][day] = _get_market_costs_from_excel_file(filename, f'Csr, {day}', num_scenarios)
+                planning_problem.cost_tertiary_reserve_up[year][day] = _get_market_costs_from_excel_file(filename, f'Ctr_up, {day}', num_scenarios)
+                planning_problem.cost_tertiary_reserve_down[year][day] = _get_market_costs_from_excel_file(filename, f'Ctr_down, {day}', num_scenarios)
+    except:
+        print(f'[ERROR] Reading market data from file(s). Exiting...')
+        exit(ERROR_SPECIFICATION_FILE)
+
+
+def _get_market_scenarios_info_from_excel_file(filename, sheet_name):
+
+    num_scenarios = 0
+    prob_scenarios = list()
+
+    try:
+        df = pd.read_excel(filename, sheet_name=sheet_name, header=None)
+        if is_int(df.iloc[0, 1]):
+            num_scenarios = int(df.iloc[0, 1])
+        for i in range(num_scenarios):
+            if is_number(df.iloc[0, i + 2]):
+                prob_scenarios.append(float(df.iloc[0, i + 2]))
+    except:
+        print('[ERROR] Workbook {}. Sheet {} does not exist.'.format(filename, sheet_name))
+        exit(1)
+
+    if num_scenarios != len(prob_scenarios):
+        print('[WARNING] EnergyStorage file. Number of scenarios different from the probability vector!')
+
+    if round(sum(prob_scenarios), 2) != 1.00:
+        print('[ERROR] Probability of scenarios does not add up to 100%. Check file {}. Exiting.'.format(filename))
+        exit(ERROR_MARKET_DATA_FILE)
+
+    return num_scenarios, prob_scenarios
+
+
+def _get_market_costs_from_excel_file(filename, sheet_name, num_scenarios):
+    data = pd.read_excel(filename, sheet_name=sheet_name)
+    _, num_cols = data.shape
+    cost_values = dict()
+    scn_idx = 0
+    for i in range(num_scenarios):
+        cost_values_scenario = list()
+        for j in range(num_cols - 1):
+            cost_values_scenario.append(float(data.iloc[i, j + 1]))
+        cost_values[scn_idx] = cost_values_scenario
+        scn_idx = scn_idx + 1
+    return cost_values
+
+
+# ======================================================================================================================
+#  RESULTS PROCESSING functions
+# ======================================================================================================================
+def _process_operational_planning_results(planning_problem, tso_model, dso_models, esso_model, optimization_results):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+    shared_ess_data = planning_problem.shared_ess_data
+
+    processed_results = dict()
+    processed_results['tso'] = dict()
+    processed_results['dso'] = dict()
+    processed_results['esso'] = dict()
+    processed_results['interface'] = dict()
+
+    processed_results['tso'] = transmission_network.process_results(tso_model, optimization_results['tso'])
+    for node_id in distribution_networks:
+        dso_model = dso_models[node_id]
+        distribution_network = distribution_networks[node_id]
+        processed_results['dso'][node_id] = distribution_network.process_results(dso_model, optimization_results['dso'][node_id])
+    processed_results['esso'] = shared_ess_data.process_results(esso_model, optimization_results['esso'])
+    processed_results['interface'] = _process_results_interface_power_flow(planning_problem, tso_model, dso_models)
+
+    return processed_results
+
+
+def _process_results_interface_power_flow(planning_problem, tso_model, dso_models):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+
+    processed_results = dict()
+    processed_results['tso'] = dict()
+    processed_results['dso'] = dict()
+
+    processed_results['tso'] = transmission_network.process_results_interface_power_flow(tso_model)
+    for node_id in distribution_networks:
+        dso_model = dso_models[node_id]
+        distribution_network = distribution_networks[node_id]
+        processed_results['dso'][node_id] = distribution_network.process_results_interface_power_flow(dso_model)
+
+    return processed_results
+
+
+# ======================================================================================================================
+#  RESULTS PLANNING - write functions
+# ======================================================================================================================
+def _write_planning_results_to_excel(planning_problem, shared_ess_processed_results, shared_ess_capacity, operational_planning_processed_results=dict(), bound_evolution=dict(), filename='planing_results'):
+
+    wb = xlwt.Workbook()
+
+    # Planning results
+    _write_main_info_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results)
+    _write_ess_capacity_investment_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['investment'])
+    _write_ess_capacity_available_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['available'])
+    _write_secondary_reserve_bands_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results['results'])
+
+    if bound_evolution:
+        _write_bound_evolution_to_excel(wb, bound_evolution)
+
+    # Operational Planning Results
+    if operational_planning_processed_results:
+        _write_objective_function_values(wb, operational_planning_processed_results)
+        _write_shared_energy_storages_results_to_excel(planning_problem, wb, operational_planning_processed_results['esso']['results'])
+        _write_interface_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results['interface'])
+        _write_network_voltage_results_to_excel(planning_problem, wb, operational_planning_processed_results)
+        _write_network_consumption_results_to_excel(planning_problem, wb, operational_planning_processed_results)
+        _write_network_generation_results_to_excel(planning_problem, wb, operational_planning_processed_results)
+        _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'losses')
+        _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'ratio')
+        _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'current')
+
+    results_filename = os.path.join(planning_problem.results_dir, filename + '.xls')
+    try:
+        wb.save(results_filename)
+        print(f'[INFO] ESS Optimization Results written to {results_filename}.')
+    except:
+        from datetime import datetime
+        now = datetime.now()
+        current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
+        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xls')
+        print(f'[INFO] ESS Optimization Results written to {backup_filename}.')
+        wb.save(backup_filename)
+
+
+def _write_main_info_to_excel(shared_ess_data, workbook, results):
+
+    sheet = workbook.add_sheet('Main Info')
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    # Objective function value
+    line = 0
+    sheet.write(line, 0, 'Objective (cost) [Mm.u.]')
+    sheet.write(line, 1, results['of_value'] / 1e6, decimal_style)
+
+    # Execution time
+    line += 1
+    sheet.write(line, 0, 'Execution time, [s]')
+    sheet.write(line, 1, results['runtime'], decimal_style)
+
+    # Number of years
+    line += 1
+    sheet.write(line, 0, 'Number of years')
+    sheet.write(line, 1, len(shared_ess_data.years))
+
+    # Number of representative days
+    line += 1
+    sheet.write(line, 0, 'Number of days')
+    sheet.write(line, 1, len(shared_ess_data.days))
+
+    # Number of price (market) scenarios
+    line += 1
+    sheet.write(line, 0, 'Number of market scenarios')
+    sheet.write(line, 1, len(shared_ess_data.prob_market_scenarios))
+
+    # Number of operation (reserve activation) scenarios
+    line += 1
+    sheet.write(line, 0, 'Number of operation scenarios')
+    sheet.write(line, 1, len(shared_ess_data.prob_operation_scenarios))
+
+
+def _write_ess_capacity_investment_to_excel(shared_ess_data, workbook, results):
+
+    years = [year for year in shared_ess_data.years]
+
+    num_style = xlwt.XFStyle()
+    num_style.num_format_str = '0.00'
+    sheet = workbook.add_sheet('Capacity Investment')
+
+    # Write Header
+    line_idx = 0
+    sheet.write(line_idx, 0, 'Node')
+    sheet.write(line_idx, 1, 'Quantity')
+    for y in range(len(years)):
+        year = years[y]
+        sheet.write(0, y + 2, int(year))
+
+    # Write investment values, power and energy
+    for node_id in results:
+
+        # Power capacity
+        line_idx = line_idx + 1
+        sheet.write(line_idx, 0, node_id)
+        sheet.write(line_idx, 1, 'S, [MVA]')
+        for y in range(len(years)):
+            year = years[y]
+            sheet.write(line_idx, y + 2, results[node_id][year]['power'], num_style)
+
+        # Energy capacity
+        line_idx = line_idx + 1
+        sheet.write(line_idx, 0, node_id)
+        sheet.write(line_idx, 1, 'E, [MVAh]')
+        for y in range(len(years)):
+            year = years[y]
+            sheet.write(line_idx, y + 2, results[node_id][year]['energy'], num_style)
+
+        # Power capacity cost
+        line_idx = line_idx + 1
+        sheet.write(line_idx, 0, node_id)
+        sheet.write(line_idx, 1, 'Cost S, [m.u.]')
+        for y in range(len(years)):
+            year = years[y]
+            cost_s = shared_ess_data.cost_investment['power_capacity'][year] * results[node_id][year]['power']
+            sheet.write(line_idx, y + 2, cost_s, num_style)
+
+        # Energy capacity cost
+        line_idx = line_idx + 1
+        sheet.write(line_idx, 0, node_id)
+        sheet.write(line_idx, 1, 'Cost E, [m.u.]')
+        for y in range(len(years)):
+            year = years[y]
+            cost_e = shared_ess_data.cost_investment['energy_capacity'][year] * results[node_id][year]['energy']
+            sheet.write(line_idx, y + 2, cost_e, num_style)
+
+        # Total capacity cost
+        line_idx = line_idx + 1
+        sheet.write(line_idx, 0, node_id)
+        sheet.write(line_idx, 1, 'Cost Total, [m.u.]')
+        for y in range(len(years)):
+            year = years[y]
+            cost_s = shared_ess_data.cost_investment['power_capacity'][year] * results[node_id][year]['power']
+            cost_e = shared_ess_data.cost_investment['energy_capacity'][year] * results[node_id][year]['energy']
+            sheet.write(line_idx, y + 2, cost_s + cost_e, num_style)
+
+
+def _write_ess_capacity_available_to_excel(shared_ess_data, workbook, results):
+
+    num_style = xlwt.XFStyle()
+    num_style.num_format_str = '0.00'
+    perc_style = xlwt.XFStyle()
+    perc_style.num_format_str = '0.00%'
+    sheet = workbook.add_sheet('Capacity Available')
+
+    # Write Header
+    row_idx, col_idx = 0, 0
+    sheet.write(row_idx, col_idx, 'Node')
+    col_idx = col_idx + 1
+    sheet.write(row_idx, col_idx, 'Quantity')
+    col_idx = col_idx + 1
+    for year in shared_ess_data.years:
+        sheet.write(row_idx, col_idx, int(year))
+        col_idx = col_idx + 1
+
+    # Write investment values, power and energy
+    for node_id in results:
+
+        # Power capacity
+        col_idx = 0
+        row_idx = row_idx + 1
+        sheet.write(row_idx, col_idx, node_id)
+        col_idx = col_idx + 1
+        sheet.write(row_idx, col_idx, 'S, [MVA]')
+        col_idx = col_idx + 1
+        for year in shared_ess_data.years:
+            sheet.write(row_idx, col_idx, results[node_id][year]['power'], num_style)
+            col_idx = col_idx + 1
+
+        # Energy capacity
+        col_idx = 0
+        row_idx = row_idx + 1
+        sheet.write(row_idx, col_idx, node_id)
+        col_idx = col_idx + 1
+        sheet.write(row_idx, col_idx, 'E, [MVAh]')
+        col_idx = col_idx + 1
+        for year in shared_ess_data.years:
+            sheet.write(row_idx, col_idx, results[node_id][year]['energy'], num_style)
+            col_idx = col_idx + 1
+
+        # Degradation factor
+        if "degradation_factor" in results[node_id][year]:
+            col_idx = 0
+            row_idx = row_idx + 1
+            sheet.write(row_idx, col_idx, node_id)
+            col_idx = col_idx + 1
+            sheet.write(row_idx, col_idx, 'Degradation factor')
+            col_idx = col_idx + 1
+            for year in shared_ess_data.years:
+                sheet.write(row_idx, col_idx, results[node_id][year]['degradation_factor'], perc_style)
+                col_idx = col_idx + 1
+
+
+def _write_secondary_reserve_bands_to_excel(shared_ess_data, workbook, results):
+
+    num_style = xlwt.XFStyle()
+    num_style.num_format_str = '0.00'
+    sheet = workbook.add_sheet('ESS, Secondary Reserve')
+    repr_years = [year for year in shared_ess_data.years]
+    repr_days = [day for day in shared_ess_data.days]
+
+    # Write Header
+    line_idx = 0
+    sheet.write(line_idx, 0, 'Year')
+    sheet.write(line_idx, 1, 'Day')
+    sheet.write(line_idx, 2, 'Type')
+    for p in range(shared_ess_data.num_instants):
+        sheet.write(0, p + 3, p)
+
+    for y in range(len(shared_ess_data.years)):
+        year = repr_years[y]
+        for d in range(len(repr_days)):
+            day = repr_days[d]
+            pup_total = [0.0] * shared_ess_data.num_instants
+            pdown_total = [0.0] * shared_ess_data.num_instants
+            for e in range(len(shared_ess_data.active_distribution_network_nodes)):
+                node_id = shared_ess_data.active_distribution_network_nodes[e]
+                for s_m in range(len(shared_ess_data.prob_market_scenarios)):
+                    prob_market_scn = shared_ess_data.prob_market_scenarios[s_m]
+                    for s_o in range(len(shared_ess_data.prob_operation_scenarios)):
+                        prob_oper_scn = shared_ess_data.prob_operation_scenarios[s_o]
+                        for p in range(shared_ess_data.num_instants):
+                            pup = results[year][day][s_m][s_o]['p_up'][node_id][p]
+                            pdown = results[year][day][s_m][s_o]['p_down'][node_id][p]
+                            if pup != 'N/A':
+                                pup_total[p] += pup * prob_market_scn * prob_oper_scn
+                            if pdown != 'N/A':
+                                pdown_total[p] += pdown * prob_market_scn * prob_oper_scn
+
+            # Upward reserve - per day
+            line_idx += 1
+            sheet.write(line_idx, 0, int(year))
+            sheet.write(line_idx, 1, day)
+            sheet.write(line_idx, 2, 'Upward, [MW]')
+            for p in range(shared_ess_data.num_instants):
+                sheet.write(line_idx, p + 3, pup_total[p], num_style)
+
+            # Downward reserve - per day
+            line_idx += 1
+            sheet.write(line_idx, 0, int(year))
+            sheet.write(line_idx, 1, day)
+            sheet.write(line_idx, 2, 'Downward, [MW]')
+            for p in range(shared_ess_data.num_instants):
+                sheet.write(line_idx, p + 3, -pdown_total[p], num_style)
+
+
+def _write_bound_evolution_to_excel(workbook, bound_evolution):
+
+    lower_bound = bound_evolution['lower_bound']
+    upper_bound = bound_evolution['upper_bound']
+    num_lines = max(len(upper_bound), max(lower_bound))
+
+    num_style = xlwt.XFStyle()
+    num_style.num_format_str = '0.00'
+    sheet = workbook.add_sheet('Convergence Characteristic')
+
+    # Write header
+    line_idx = 0
+    sheet.write(line_idx, 0, 'Iteration')
+    sheet.write(line_idx, 1, 'Lower Bound, [NPV Mm.u.]')
+    sheet.write(line_idx, 2, 'Upper Bound, [NPV Mm.u.]')
+
+    # Iterations
+    line_idx = 1
+    for i in range(num_lines):
+        sheet.write(line_idx, 0, i)
+        line_idx += 1
+
+    # Lower bound
+    line_idx = 1
+    for value in lower_bound:
+        sheet.write(line_idx, 1, value / 1e6, num_style)
+        line_idx += 1
+
+    # Upper bound
+    line_idx = 1
+    for value in upper_bound:
+        sheet.write(line_idx, 2, value / 1e6, num_style)
+        line_idx += 1
+
+
+# ======================================================================================================================
+#  RESULTS OPERATIONAL PLANNING - write functions
+# ======================================================================================================================
+def _write_operational_planning_results_to_excel(planning_problem, results, primal_evolution=list(), filename='operation_planning_results'):
+
+    num_instants = planning_problem.num_instants
+    wb = xlwt.Workbook()
+
+    _write_objective_function_values(wb, results)
+    _write_shared_ess_specifications(wb, planning_problem.shared_ess_data)
+
+    if primal_evolution:
+        _write_objective_function_evolution_to_excel(wb, primal_evolution)
+
+    # Interface Power Flow
+    _write_interface_power_flow_results_to_excel(planning_problem, wb, results['interface'])
+
+    # Shared Energy Storages results
+    _write_shared_energy_storages_results_to_excel(planning_problem, wb, results['esso']['results'])
+
+    #  TSO and DSOs' results
+    _write_network_voltage_results_to_excel(planning_problem, wb, results)
+    _write_network_consumption_results_to_excel(planning_problem, wb, results)
+    _write_network_generation_results_to_excel(planning_problem, wb, results)
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'losses', num_instants)
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'ratio', num_instants)
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'current', num_instants)
+
+    # Save results
+    results_filename = os.path.join(planning_problem.results_dir, filename + '.xls')
+    try:
+        wb.save(results_filename)
+    except:
+        from datetime import datetime
+        now = datetime.now()
+        current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
+        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xls')
+        print(f"[WARNING] Couldn't write to file {filename}.xls. Results saved to file {backup_filename}.xls")
+        wb.save(backup_filename)
+
+
+def _write_objective_function_values(workbook, results):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    sheet = workbook.add_sheet('OF Values')
+
+    # Write Header
+    row_idx = 0
+    col_idx = 0
+    sheet.write(0, col_idx, 'Agent')
+    col_idx += 1
+    for year in results['tso']['results']:
+        for day in results['tso']['results'][year]:
+            sheet.write(row_idx, col_idx, f'{year}, {day}, [m.u.]')
+            col_idx += 1
+    sheet.write(row_idx, col_idx, 'Total, [NPV Mm.u.]')
+
+    row_idx = row_idx + 1
+    col_idx = 0
+    sheet.write(row_idx, col_idx, 'ESSO')
+    col_idx += 1
+    for year in results['esso']['results']:
+        for day in results['esso']['results'][year]:
+            sheet.write(row_idx, col_idx, results['esso']['results'][year][day]['obj'], decimal_style)
+            col_idx += 1
+    sheet.write(row_idx, col_idx, results['esso']['of_value'] / 1e6, decimal_style)
+
+    row_idx = row_idx + 1
+    col_idx = 0
+    sheet.write(row_idx, col_idx, 'TSO')
+    col_idx += 1
+    for year in results['tso']['results']:
+        for day in results['tso']['results'][year]:
+            sheet.write(row_idx, col_idx, results['tso']['results'][year][day]['obj'], decimal_style)
+            col_idx += 1
+    sheet.write(row_idx, col_idx, results['tso']['of_value'] / 1e6, decimal_style)
+
+
+def _write_shared_ess_specifications(workbook, shared_ess_info):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.000'
+
+    sheet = workbook.add_sheet('Shared ESS Specifications')
+
+    # Write Header
+    row_idx = 0
+    sheet.write(0, 0, 'Year')
+    sheet.write(0, 1, 'Node ID')
+    sheet.write(0, 2, 'Sinst, [MVA]')
+    sheet.write(0, 3, 'Einst, [MVAh]')
+
+    # Write Shared ESS specifications
+    for year in shared_ess_info.years:
+        for shared_ess in shared_ess_info.shared_energy_storages[year]:
+            row_idx = row_idx + 1
+            sheet.write(row_idx, 0, year)
+            sheet.write(row_idx, 1, shared_ess.bus)
+            sheet.write(row_idx, 2, shared_ess.s, decimal_style)
+            sheet.write(row_idx, 3, shared_ess.e, decimal_style)
+
+
+def _write_objective_function_evolution_to_excel(workbook, primal_evolution):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.000000'
+
+    sheet = workbook.add_sheet('Primal Evolution')
+
+    # Write Header
+    sheet.write(0, 0, 'Iteration')
+    sheet.write(0, 1, 'OF value')
+    row_idx = 1
+    for i in range(len(primal_evolution)):
+        sheet.write(row_idx, 0, i)
+        sheet.write(row_idx, 1, primal_evolution[i], decimal_style)
+        row_idx = row_idx + 1
+
+
+def _write_interface_power_flow_results_to_excel(planning_problem, workbook, results):
+
+    row_idx = 0
+    sheet = workbook.add_sheet('Interface PF')
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Node ID')
+    sheet.write(row_idx, 1, 'Operator')
+    sheet.write(row_idx, 2, 'Year')
+    sheet.write(row_idx, 3, 'Day')
+    sheet.write(row_idx, 4, 'Quantity')
+    sheet.write(row_idx, 5, 'Market Scenario')
+    sheet.write(row_idx, 6, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 7, p + 1)
+    row_idx = row_idx + 1
+
+    # TSO's results
+    for year in results['tso']:
+        for day in results['tso'][year]:
+            for node_id in results['tso'][year][day]:
+                expected_p = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_q = [0.0 for _ in range(planning_problem.num_instants)]
+                for s_m in results['tso'][year][day][node_id]:
+                    omega_m = planning_problem.transmission_network.network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results['tso'][year][day][node_id][s_m]:
+                        omega_s = planning_problem.transmission_network.network[year][day].prob_operation_scenarios[s_o]
+
+                        # Active Power
+                        sheet.write(row_idx, 0, node_id)
+                        sheet.write(row_idx, 1, 'TSO')
+                        sheet.write(row_idx, 2, int(year))
+                        sheet.write(row_idx, 3, day)
+                        sheet.write(row_idx, 4, 'P, [MW]')
+                        sheet.write(row_idx, 5, s_m)
+                        sheet.write(row_idx, 6, s_o)
+                        for p in range(planning_problem.num_instants):
+                            interface_p = results['tso'][year][day][node_id][s_m][s_o]['p'][p]
+                            sheet.write(row_idx, p + 7, interface_p, decimal_style)
+                            expected_p[p] += interface_p * omega_m * omega_s
+                        row_idx += 1
+
+                        # Reactive Power
+                        sheet.write(row_idx, 0, node_id)
+                        sheet.write(row_idx, 1, 'TSO')
+                        sheet.write(row_idx, 2, int(year))
+                        sheet.write(row_idx, 3, day)
+                        sheet.write(row_idx, 4, 'Q, [MVAr]')
+                        sheet.write(row_idx, 5, s_m)
+                        sheet.write(row_idx, 6, s_o)
+                        for p in range(planning_problem.num_instants):
+                            interface_q = results['tso'][year][day][node_id][s_m][s_o]['q'][p]
+                            sheet.write(row_idx, p + 7, interface_q, decimal_style)
+                            expected_q[p] += interface_q * omega_m * omega_s
+                        row_idx += 1
+
+                # Expected Active Power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'P, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_p[p], decimal_style)
+                row_idx += 1
+
+                # Expected Reactive Power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'Q, [MVAr]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_q[p], decimal_style)
+                row_idx += 1
+
+    # DSOs' results
+    for node_id in results['dso']:
+        for year in results['dso'][node_id]:
+            for day in results['dso'][node_id][year]:
+                expected_p = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_q = [0.0 for _ in range(planning_problem.num_instants)]
+                for s_m in results['dso'][node_id][year][day]:
+                    omega_m = planning_problem.distribution_networks[node_id].network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results['dso'][node_id][year][day][s_m]:
+                        omega_s = planning_problem.distribution_networks[node_id].network[year][day].prob_operation_scenarios[s_o]
+
+                        # Active Power
+                        sheet.write(row_idx, 0, node_id)
+                        sheet.write(row_idx, 1, 'DSO')
+                        sheet.write(row_idx, 2, int(year))
+                        sheet.write(row_idx, 3, day)
+                        sheet.write(row_idx, 4, 'P, [MW]')
+                        sheet.write(row_idx, 5, s_m)
+                        sheet.write(row_idx, 6, s_o)
+                        for p in range(planning_problem.num_instants):
+                            interface_p = results['dso'][node_id][year][day][s_m][s_o]['p'][p]
+                            sheet.write(row_idx, p + 7, interface_p, decimal_style)
+                            expected_p[p] += interface_p * omega_m * omega_s
+                        row_idx += 1
+
+                        # Reactive Power
+                        sheet.write(row_idx, 0, node_id)
+                        sheet.write(row_idx, 1, 'DSO')
+                        sheet.write(row_idx, 2, int(year))
+                        sheet.write(row_idx, 3, day)
+                        sheet.write(row_idx, 4, 'Q, [MVAr]')
+                        sheet.write(row_idx, 5, s_m)
+                        sheet.write(row_idx, 6, s_o)
+                        for p in range(len(results['dso'][node_id][year][day][s_m][s_o]['q'])):
+                            interface_q = results['dso'][node_id][year][day][s_m][s_o]['q'][p]
+                            sheet.write(row_idx, p + 7, interface_q, decimal_style)
+                            expected_q[p] += interface_q * omega_m * omega_s
+                        row_idx += 1
+
+                # Expected Active Power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'DSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'P, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_p[p], decimal_style)
+                row_idx += 1
+
+                # Expected Reactive Power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'DSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'Q, [MVAr]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(len(results['dso'][node_id][year][day][s_m][s_o]['q'])):
+                    sheet.write(row_idx, p + 7, expected_q[p], decimal_style)
+                row_idx += 1
+
+
+def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, results):
+
+    row_idx = 0
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+    percent_style = xlwt.easyxf(num_format_str='0.00%')
+
+    sheet = workbook.add_sheet('Shared ESS')
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Node ID')
+    sheet.write(row_idx, 1, 'Year')
+    sheet.write(row_idx, 2, 'Day')
+    sheet.write(row_idx, 3, 'Quantity')
+    sheet.write(row_idx, 4, 'Market Scenario')
+    sheet.write(row_idx, 5, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 6, p + 1)
+
+    for year in results:
+        for day in results[year]:
+            for s_m in results[year][day]:
+
+                expected_p = dict()
+                expected_soc = dict()
+                expected_soc_percent = dict()
+                expected_pup = dict()
+                expected_pdown = dict()
+                for node_id in planning_problem.active_distribution_network_nodes:
+                    expected_p[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                    expected_soc[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                    expected_soc_percent[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                    expected_pup[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                    expected_pdown[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+
+                if s_m != 'obj':
+                    omega_m = planning_problem.shared_ess_data.prob_market_scenarios[s_m]
+
+                    for s_o in results[year][day][s_m]:
+                        omega_s = planning_problem.shared_ess_data.prob_operation_scenarios[s_o]
+
+                        # Active Power
+                        for node_id in results[year][day][s_m][s_o]['p']:
+
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'P, [MW]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_p = results[year][day][s_m][s_o]['p'][node_id][p]
+                                sheet.write(row_idx, p + 6, ess_p, decimal_style)
+                                if ess_p != 'N/A':
+                                    expected_p[node_id][p] += ess_p * omega_m * omega_s
+                                else:
+                                    expected_p[node_id][p] = ess_p
+
+                            # State-of-Charge, [MVAh]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'SoC, [MVAh]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_soc = results[year][day][s_m][s_o]['soc'][node_id][p]
+                                sheet.write(row_idx, p + 6, ess_soc, decimal_style)
+                                if ess_soc != 'N/A':
+                                    expected_soc[node_id][p] += ess_soc * omega_m * omega_s
+                                else:
+                                    expected_soc[node_id][p] = ess_soc
+
+                            # State-of-Charge, [%]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'SoC, [%]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_soc_percent = results[year][day][s_m][s_o]['soc_percent'][node_id][p]
+                                sheet.write(row_idx, p + 6, ess_soc_percent, percent_style)
+                                if ess_soc_percent != 'N/A':
+                                    expected_soc_percent[node_id][p] += ess_soc_percent * omega_m * omega_s
+                                else:
+                                    expected_soc_percent[node_id][p] = ess_soc_percent
+
+                            # Secondary reserve - Upward band, [MW]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'Pup, [MW]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_pup = results[year][day][s_m][s_o]['p_up'][node_id][p]
+                                sheet.write(row_idx, p + 6, ess_pup, decimal_style)
+                                if ess_pup != 'N/A':
+                                    expected_pup[node_id][p] += ess_pup * omega_m * omega_s
+                                else:
+                                    expected_pup[node_id][p] = ess_pup
+
+                            # Secondary reserve - Downward band, [MW]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'Pdown, [MW]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_pdown = results[year][day][s_m][s_o]['p_down'][node_id][p]
+                                sheet.write(row_idx, p + 6, ess_pdown, decimal_style)
+                                if ess_pup != 'N/A':
+                                    expected_pdown[node_id][p] += ess_pdown * omega_m * omega_s
+                                else:
+                                    expected_pdown[node_id][p] = ess_pdown
+
+            for node_id in planning_problem.active_distribution_network_nodes:
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'P, [MW]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 6, expected_p[node_id][p], decimal_style)
+
+                # State-of-Charge, [MVAh]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'SoC, [MVAh]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 6, expected_soc[node_id][p], decimal_style)
+
+                # State-of-Charge, [%]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'SoC, [%]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 6, expected_soc_percent[node_id][p], percent_style)
+
+                # Secondary reserve - Upward band, [MW]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'Pup, [MW]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 6, expected_pup[node_id][p], decimal_style)
+
+                # Secondary reserve - Downward band, [MW]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'Pdown, [MW]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 6, expected_pdown[node_id][p], decimal_style)
+
+
+def _write_network_voltage_results_to_excel(planning_problem, workbook, results):
+
+    row_idx = 0
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    sheet = workbook.add_sheet('Voltage')
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Operator')
+    sheet.write(row_idx, 1, 'Connection Node ID')
+    sheet.write(row_idx, 2, 'Network Node ID')
+    sheet.write(row_idx, 3, 'Year')
+    sheet.write(row_idx, 4, 'Day')
+    sheet.write(row_idx, 5, 'Quantity')
+    sheet.write(row_idx, 6, 'Market Scenario')
+    sheet.write(row_idx, 7, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 8, p + 0)
+    row_idx = row_idx + 1
+
+    # Write results -- TSO
+    transmission_network = planning_problem.transmission_network.network
+    row_idx = _write_network_voltage_results_per_operator(transmission_network, sheet, 'TSO', row_idx, results['tso']['results'])
+
+    # Write results -- DSOs
+    for tn_node_id in results['dso']:
+        dso_results = results['dso'][tn_node_id]['results']
+        distribution_network = planning_problem.distribution_networks[tn_node_id].network
+        row_idx = _write_network_voltage_results_per_operator(distribution_network, sheet, 'DSO', row_idx, dso_results, tn_node_id=tn_node_id)
+
+
+def _write_network_voltage_results_per_operator(network, sheet, operator_type, row_idx, results, tn_node_id='-'):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    for year in results:
+        for day in results[year]:
+
+            expected_vmag = dict()
+            expected_vang = dict()
+            for node in network[year][day].nodes:
+                expected_vmag[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_vang[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m != 'runtime' and s_m != 'obj':
+                    omega_m = network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network[year][day].prob_operation_scenarios[s_o]
+                        for node_id in results[year][day][s_m][s_o]['voltage']['vmag']:
+
+                            # Voltage magnitude
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, node_id)
+                            sheet.write(row_idx, 3, int(year))
+                            sheet.write(row_idx, 4, day)
+                            sheet.write(row_idx, 5, 'Vmag, [p.u.]')
+                            sheet.write(row_idx, 6, s_m)
+                            sheet.write(row_idx, 7, s_o)
+                            for p in range(network[year][day].num_instants):
+                                v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id][p]
+                                sheet.write(row_idx, p + 8, v_mag, decimal_style)
+                                expected_vmag[node_id][p] += v_mag * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Voltage angle
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, node_id)
+                            sheet.write(row_idx, 3, int(year))
+                            sheet.write(row_idx, 4, day)
+                            sheet.write(row_idx, 5, 'Vang, [º]')
+                            sheet.write(row_idx, 6, s_m)
+                            sheet.write(row_idx, 7, s_o)
+                            for p in range(network[year][day].num_instants):
+                                v_ang = results[year][day][s_m][s_o]['voltage']['vang'][node_id][p]
+                                sheet.write(row_idx, p + 8, v_ang, decimal_style)
+                                expected_vang[node_id][p] += v_mag * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+            for node in network[year][day].nodes:
+
+                node_id = node.bus_i
+
+                # Expected voltage magnitude
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, int(year))
+                sheet.write(row_idx, 4, day)
+                sheet.write(row_idx, 5, 'Vmag, [p.u.]')
+                sheet.write(row_idx, 6, 'Expected')
+                sheet.write(row_idx, 7, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 8, expected_vmag[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Expected voltage angle
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, int(year))
+                sheet.write(row_idx, 4, day)
+                sheet.write(row_idx, 5, 'Vang, [º]')
+                sheet.write(row_idx, 6, 'Expected')
+                sheet.write(row_idx, 7, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 8, expected_vang[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+    return row_idx
+
+
+def _write_network_consumption_results_to_excel(planning_problem, workbook, results):
+
+    row_idx = 0
+    sheet = workbook.add_sheet('Consumption')
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Operator')
+    sheet.write(row_idx, 1, 'Connection Node ID')
+    sheet.write(row_idx, 2, 'Network Node ID')
+    sheet.write(row_idx, 3, 'Year')
+    sheet.write(row_idx, 4, 'Day')
+    sheet.write(row_idx, 5, 'Quantity')
+    sheet.write(row_idx, 6, 'Market Scenario')
+    sheet.write(row_idx, 7, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 8, p + 0)
+    row_idx = row_idx + 1
+
+    # Write results -- TSO
+    tso_results = results['tso']['results']
+    transmission_network = planning_problem.transmission_network.network
+    tn_params = planning_problem.transmission_network.params
+    row_idx = _write_network_consumption_results_per_operator(transmission_network, tn_params, sheet, 'TSO', row_idx, tso_results)
+
+    # Write results -- DSOs
+    for tn_node_id in results['dso']:
+        dso_results = results['dso'][tn_node_id]['results']
+        distribution_network = planning_problem.distribution_networks[tn_node_id].network
+        dn_params = planning_problem.distribution_networks[tn_node_id].params
+        row_idx = _write_network_consumption_results_per_operator(distribution_network, dn_params, sheet, 'DSO', row_idx, dso_results, tn_node_id=tn_node_id)
+
+
+def _write_network_consumption_results_per_operator(network, params, sheet, operator_type, row_idx, results, tn_node_id='-'):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    for year in results:
+        for day in results[year]:
+
+            expected_pc = dict()
+            expected_flex_up = dict()
+            expected_flex_down = dict()
+            expected_pc_curt = dict()
+            expected_pnet = dict()
+            expected_qc = dict()
+            for node in network[year][day].nodes:
+                expected_pc[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_flex_up[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_flex_down[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_pc_curt[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_pnet[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_qc[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m != 'runtime' and s_m != 'obj':
+                    omega_m = network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network[year][day].prob_operation_scenarios[s_o]
+                        for node_id in results[year][day][s_m][s_o]['consumption']['pc']:
+
+                            # - Active Power
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, node_id)
+                            sheet.write(row_idx, 3, int(year))
+                            sheet.write(row_idx, 4, day)
+                            sheet.write(row_idx, 5, 'Pc, [MW]')
+                            sheet.write(row_idx, 6, s_m)
+                            sheet.write(row_idx, 7, s_o)
+                            for p in range(network[year][day].num_instants):
+                                pc = results[year][day][s_m][s_o]['consumption']['pc'][node_id][p]
+                                sheet.write(row_idx, p + 8, pc, decimal_style)
+                                expected_pc[node_id][p] += pc * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            if params.fl_reg:
+
+                                # - Flexibility, up
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, node_id)
+                                sheet.write(row_idx, 3, int(year))
+                                sheet.write(row_idx, 4, day)
+                                sheet.write(row_idx, 5, 'Flex Up, [MW]')
+                                sheet.write(row_idx, 6, s_m)
+                                sheet.write(row_idx, 7, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    flex = results[year][day][s_m][s_o]['consumption']['p_up'][node_id][p]
+                                    sheet.write(row_idx, p + 8, flex, decimal_style)
+                                    expected_flex_up[node_id][p] += flex * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                                # - Flexibility, down
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, node_id)
+                                sheet.write(row_idx, 3, int(year))
+                                sheet.write(row_idx, 4, day)
+                                sheet.write(row_idx, 5, 'Flex Down, [MW]')
+                                sheet.write(row_idx, 6, s_m)
+                                sheet.write(row_idx, 7, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    flex = results[year][day][s_m][s_o]['consumption']['p_down'][node_id][p]
+                                    sheet.write(row_idx, p + 8, flex, decimal_style)
+                                    expected_flex_down[node_id][p] += flex * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            if params.l_curt:
+
+                                # - Active power curtailment
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, node_id)
+                                sheet.write(row_idx, 3, int(year))
+                                sheet.write(row_idx, 4, day)
+                                sheet.write(row_idx, 5, 'Pc_curt, [MW]')
+                                sheet.write(row_idx, 6, s_m)
+                                sheet.write(row_idx, 7, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    pc_curt = results[year][day][s_m][s_o]['consumption']['pc_curt'][node_id][p]
+                                    sheet.write(row_idx, p + 8, pc_curt, decimal_style)
+                                    expected_pc_curt[node_id][p] += pc_curt * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            if params.fl_reg or params.l_curt:
+
+                                # - Active power net consumption
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, node_id)
+                                sheet.write(row_idx, 3, int(year))
+                                sheet.write(row_idx, 4, day)
+                                sheet.write(row_idx, 5, 'Pc_net, [MW]')
+                                sheet.write(row_idx, 6, s_m)
+                                sheet.write(row_idx, 7, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    p_net = results[year][day][s_m][s_o]['consumption']['pc_net'][node_id][p]
+                                    sheet.write(row_idx, p + 8, p_net, decimal_style)
+                                    expected_pnet[node_id][p] += p_net * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            # - Reactive power
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, node_id)
+                            sheet.write(row_idx, 3, int(year))
+                            sheet.write(row_idx, 4, day)
+                            sheet.write(row_idx, 5, 'Qc, [MVAr]')
+                            sheet.write(row_idx, 6, s_m)
+                            sheet.write(row_idx, 7, s_o)
+                            for p in range(network[year][day].num_instants):
+                                qc = results[year][day][s_m][s_o]['consumption']['qc'][node_id][p]
+                                sheet.write(row_idx, p + 8, qc, decimal_style)
+                                expected_qc[node_id][p] += qc * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+            for node in network[year][day].nodes:
+
+                node_id = node.bus_i
+
+                # - Active Power
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, int(year))
+                sheet.write(row_idx, 4, day)
+                sheet.write(row_idx, 5, 'Pc, [MW]')
+                sheet.write(row_idx, 6, 'Expected')
+                sheet.write(row_idx, 7, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 8, expected_pc[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+                if params.fl_reg:
+
+                    # - Flexibility, up
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, node_id)
+                    sheet.write(row_idx, 3, int(year))
+                    sheet.write(row_idx, 4, day)
+                    sheet.write(row_idx, 5, 'Flex Up, [MW]')
+                    sheet.write(row_idx, 6, 'Expected')
+                    sheet.write(row_idx, 7, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 8, expected_flex_up[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                    # - Flexibility, down
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, node_id)
+                    sheet.write(row_idx, 3, int(year))
+                    sheet.write(row_idx, 4, day)
+                    sheet.write(row_idx, 5, 'Flex Down, [MW]')
+                    sheet.write(row_idx, 6, 'Expected')
+                    sheet.write(row_idx, 7, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 8, expected_flex_down[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                if params.l_curt:
+
+                    # - Load curtailment (active power)
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, node_id)
+                    sheet.write(row_idx, 3, int(year))
+                    sheet.write(row_idx, 4, day)
+                    sheet.write(row_idx, 5, 'Pc_curt Up, [MW]')
+                    sheet.write(row_idx, 6, 'Expected')
+                    sheet.write(row_idx, 7, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 8, expected_pc_curt[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                if params.fl_reg or network.params.l_curt:
+
+                    # - Active power net consumption
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, node_id)
+                    sheet.write(row_idx, 3, int(year))
+                    sheet.write(row_idx, 4, day)
+                    sheet.write(row_idx, 5, 'Pc_net, [MW]')
+                    sheet.write(row_idx, 6, 'Expected')
+                    sheet.write(row_idx, 7, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 8, expected_pnet[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                # - Reactive power
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, int(year))
+                sheet.write(row_idx, 4, day)
+                sheet.write(row_idx, 5, 'Qc, [MVAr]')
+                sheet.write(row_idx, 6, 'Expected')
+                sheet.write(row_idx, 7, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 8, expected_qc[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+    return row_idx
+
+
+def _write_network_generation_results_to_excel(planning_problem, workbook, results):
+
+    row_idx = 0
+    sheet = workbook.add_sheet('Generation')
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Operator')
+    sheet.write(row_idx, 1, 'Connection Node ID')
+    sheet.write(row_idx, 2, 'Network Node ID')
+    sheet.write(row_idx, 3, 'Generator ID')
+    sheet.write(row_idx, 4, 'Type')
+    sheet.write(row_idx, 5, 'Year')
+    sheet.write(row_idx, 6, 'Day')
+    sheet.write(row_idx, 7, 'Quantity')
+    sheet.write(row_idx, 8, 'Market Scenario')
+    sheet.write(row_idx, 9, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 10, p + 1)
+    row_idx = row_idx + 1
+
+    # Write results -- TSO
+    transmission_network = planning_problem.transmission_network.network
+    tn_params = planning_problem.transmission_network.params
+    row_idx = _write_network_generation_results_per_operator(transmission_network, tn_params, sheet, 'TSO', row_idx, results['tso']['results'])
+
+    # Write results -- DSOs
+    for tn_node_id in results['dso']:
+        dso_results = results['dso'][tn_node_id]['results']
+        distribution_network = planning_problem.distribution_networks[tn_node_id].network
+        dn_params = planning_problem.distribution_networks[tn_node_id].params
+        row_idx = _write_network_generation_results_per_operator(distribution_network, dn_params, sheet, 'DSO', row_idx, dso_results, tn_node_id=tn_node_id)
+
+
+def _write_network_generation_results_per_operator(network, params, sheet, operator_type, row_idx, results, tn_node_id='-'):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    for year in results:
+        for day in results[year]:
+
+            expected_pg = dict()
+            expected_pg_curt = dict()
+            expected_pg_net = dict()
+            expected_qg = dict()
+            for generator in network[year][day].generators:
+                expected_pg[generator.gen_id] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_pg_curt[generator.gen_id] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_pg_net[generator.gen_id] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_qg[generator.gen_id] = [0.0 for _ in range(network[year][day].num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m != 'obj' and s_m != 'runtime':
+                    omega_m = network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network[year][day].prob_operation_scenarios[s_o]
+                        for g in results[year][day][s_m][s_o]['generation']['pg']:
+
+                            node_id = network[year][day].generators[g].bus
+                            gen_id = network[year][day].generators[g].gen_id
+                            gen_type = network[year][day].get_gen_type(gen_id)
+
+                            # Active Power
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, node_id)
+                            sheet.write(row_idx, 3, gen_id)
+                            sheet.write(row_idx, 4, gen_type)
+                            sheet.write(row_idx, 5, int(year))
+                            sheet.write(row_idx, 6, day)
+                            sheet.write(row_idx, 7, 'Pg, [MW]')
+                            sheet.write(row_idx, 8, s_m)
+                            sheet.write(row_idx, 9, s_o)
+                            for p in range(network[year][day].num_instants):
+                                pg = results[year][day][s_m][s_o]['generation']['pg'][g][p]
+                                sheet.write(row_idx, p + 10, pg, decimal_style)
+                                expected_pg[gen_id][p] += pg * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            if params.rg_curt:
+
+                                # Active Power curtailment
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, node_id)
+                                sheet.write(row_idx, 3, gen_id)
+                                sheet.write(row_idx, 4, gen_type)
+                                sheet.write(row_idx, 5, int(year))
+                                sheet.write(row_idx, 6, day)
+                                sheet.write(row_idx, 7, 'Pg_curt, [MW]')
+                                sheet.write(row_idx, 8, s_m)
+                                sheet.write(row_idx, 9, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    pg_curt = results[year][day][s_m][s_o]['generation']['pg_curt'][g][p]
+                                    sheet.write(row_idx, p + 10, pg_curt, decimal_style)
+                                    expected_pg_curt[gen_id][p] += pg_curt * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                                # Active Power net
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, node_id)
+                                sheet.write(row_idx, 3, gen_id)
+                                sheet.write(row_idx, 4, gen_type)
+                                sheet.write(row_idx, 5, int(year))
+                                sheet.write(row_idx, 6, day)
+                                sheet.write(row_idx, 7, 'Pg_net, [MW]')
+                                sheet.write(row_idx, 8, s_m)
+                                sheet.write(row_idx, 9, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    pg_net = results[year][day][s_m][s_o]['generation']['pg_net'][g][p]
+                                    sheet.write(row_idx, p + 10, pg_net, decimal_style)
+                                    expected_pg_net[gen_id][p] += pg_net * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            # Reactive Power
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, node_id)
+                            sheet.write(row_idx, 3, gen_id)
+                            sheet.write(row_idx, 4, gen_type)
+                            sheet.write(row_idx, 5, int(year))
+                            sheet.write(row_idx, 6, day)
+                            sheet.write(row_idx, 7, 'Qg, [MVAr]')
+                            sheet.write(row_idx, 8, s_m)
+                            sheet.write(row_idx, 9, s_o)
+                            for p in range(network[year][day].num_instants):
+                                qg = results[year][day][s_m][s_o]['generation']['qg'][g][p]
+                                sheet.write(row_idx, p + 10, qg, decimal_style)
+                                expected_qg[gen_id][p] += qg * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+            for generator in network[year][day].generators:
+
+                node_id = generator.bus
+                gen_id = generator.gen_id
+                gen_type = network[year][day].get_gen_type(gen_id)
+
+                # Active Power
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, gen_id)
+                sheet.write(row_idx, 4, gen_type)
+                sheet.write(row_idx, 5, int(year))
+                sheet.write(row_idx, 6, day)
+                sheet.write(row_idx, 7, 'Pg, [MW]')
+                sheet.write(row_idx, 8, 'Expected')
+                sheet.write(row_idx, 9, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 10, expected_pg[gen_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+                if params.rg_curt:
+
+                    # Active Power curtailment
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, node_id)
+                    sheet.write(row_idx, 3, gen_id)
+                    sheet.write(row_idx, 4, gen_type)
+                    sheet.write(row_idx, 5, int(year))
+                    sheet.write(row_idx, 6, day)
+                    sheet.write(row_idx, 7, 'Pg_curt, [MW]')
+                    sheet.write(row_idx, 8, 'Expected')
+                    sheet.write(row_idx, 9, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 10, expected_pg_curt[gen_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                    # Active Power net
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, node_id)
+                    sheet.write(row_idx, 3, gen_id)
+                    sheet.write(row_idx, 4, gen_type)
+                    sheet.write(row_idx, 5, int(year))
+                    sheet.write(row_idx, 6, day)
+                    sheet.write(row_idx, 7, 'Pg_net, [MW]')
+                    sheet.write(row_idx, 8, 'Expected')
+                    sheet.write(row_idx, 9, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 10, expected_pg_net[gen_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                # Reactive Power
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, gen_id)
+                sheet.write(row_idx, 4, gen_type)
+                sheet.write(row_idx, 5, int(year))
+                sheet.write(row_idx, 6, day)
+                sheet.write(row_idx, 7, 'Qg, [MVAr]')
+                sheet.write(row_idx, 8, 'Expected')
+                sheet.write(row_idx, 9, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 10, expected_qg[gen_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+    return row_idx
+
+
+def _write_network_branch_results_to_excel(planning_problem, workbook, results, result_type):
+
+    row_idx = 0
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    sheet_name = str()
+    if result_type == 'current':
+        sheet_name = 'Branch Current'
+    elif result_type == 'losses':
+        sheet_name = 'Branch Losses'
+    elif result_type == 'ratio':
+        sheet_name = 'Transformer Ratio'
+    sheet = workbook.add_sheet(sheet_name)
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Operator')
+    sheet.write(row_idx, 1, 'Connection Node ID')
+    sheet.write(row_idx, 2, 'From Node ID')
+    sheet.write(row_idx, 3, 'To Node ID')
+    sheet.write(row_idx, 4, 'Year')
+    sheet.write(row_idx, 5, 'Day')
+    sheet.write(row_idx, 6, 'Quantity')
+    sheet.write(row_idx, 7, 'Market Scenario')
+    sheet.write(row_idx, 8, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 9, p + 0)
+    row_idx = row_idx + 1
+
+    # Write results -- TSO
+    transmission_network = planning_problem.transmission_network.network
+    row_idx = _write_network_branch_results_per_operator(transmission_network, sheet, 'TSO', row_idx, results['tso']['results'], result_type)
+
+    # Write results -- DSOs
+    for tn_node_id in results['dso']:
+        dso_results = results['dso'][tn_node_id]['results']
+        distribution_network = planning_problem.distribution_networks[tn_node_id].network
+        row_idx = _write_network_branch_results_per_operator(distribution_network, sheet, 'DSO', row_idx, dso_results, result_type, tn_node_id=tn_node_id)
+
+
+def _write_network_branch_results_per_operator(network, sheet, operator_type, row_idx, results, result_type, tn_node_id='-'):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+    perc_style = xlwt.XFStyle()
+    perc_style.num_format_str = '0.00%'
+
+    aux_string = str()
+    if result_type == 'current':
+        aux_string = 'I, [A]'
+    elif result_type == 'losses':
+        aux_string = 'P, [MW]'
+    elif result_type == 'ratio':
+        aux_string = 'Ratio'
+
+    for year in results:
+        for day in results[year]:
+
+            expected_values = dict()
+            for k in range(len(network[year][day].branches)):
+                expected_values[k] = [0.0 for _ in range(network[year][day].num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m != 'runtime' and s_m != 'obj':
+                    omega_m = network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network[year][day].prob_operation_scenarios[s_o]
+                        for k in results[year][day][s_m][s_o]['branches'][result_type]:
+                            branch = network[year][day].branches[k]
+                            if not(result_type == 'ratio' and not branch.is_transformer):
+
+                                sheet.write(row_idx, 0, operator_type)
+                                sheet.write(row_idx, 1, tn_node_id)
+                                sheet.write(row_idx, 2, branch.fbus)
+                                sheet.write(row_idx, 3, branch.tbus)
+                                sheet.write(row_idx, 4, int(year))
+                                sheet.write(row_idx, 5, day)
+                                sheet.write(row_idx, 6, aux_string)
+                                sheet.write(row_idx, 7, s_m)
+                                sheet.write(row_idx, 8, s_o)
+                                for p in range(network[year][day].num_instants):
+                                    value = results[year][day][s_m][s_o]['branches'][result_type][k][p]
+                                    sheet.write(row_idx, p + 9, value, decimal_style)
+                                    expected_values[k][p] += value * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                                if result_type == 'current':
+                                    rating = network[year][day].branches[k].rate_a
+                                    sheet.write(row_idx, 0, operator_type)
+                                    sheet.write(row_idx, 1, tn_node_id)
+                                    sheet.write(row_idx, 2, branch.fbus)
+                                    sheet.write(row_idx, 3, branch.tbus)
+                                    sheet.write(row_idx, 4, int(year))
+                                    sheet.write(row_idx, 5, day)
+                                    sheet.write(row_idx, 6, 'I, [%]')
+                                    sheet.write(row_idx, 7, s_m)
+                                    sheet.write(row_idx, 8, s_o)
+                                    for p in range(network[year][day].num_instants):
+                                        value = results[year][day][s_m][s_o]['branches'][result_type][k][p] / rating
+                                        sheet.write(row_idx, p + 9, value, perc_style)
+                                        expected_values[k][p] += value * omega_m * omega_s
+                                    row_idx = row_idx + 1
+
+            for k in range(len(network[year][day].branches)):
+                branch = network[year][day].branches[k]
+                if not (result_type == 'ratio' and not branch.is_transformer):
+
+                    sheet.write(row_idx, 0, operator_type)
+                    sheet.write(row_idx, 1, tn_node_id)
+                    sheet.write(row_idx, 2, branch.fbus)
+                    sheet.write(row_idx, 3, branch.tbus)
+                    sheet.write(row_idx, 4, int(year))
+                    sheet.write(row_idx, 5, day)
+                    sheet.write(row_idx, 6, aux_string)
+                    sheet.write(row_idx, 7, 'Expected')
+                    sheet.write(row_idx, 8, '-')
+                    for p in range(network[year][day].num_instants):
+                        sheet.write(row_idx, p + 9, expected_values[k][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                    if result_type == 'current':
+                        rating = network[year][day].branches[k].rate_a
+                        sheet.write(row_idx, 0, operator_type)
+                        sheet.write(row_idx, 1, tn_node_id)
+                        sheet.write(row_idx, 2, branch.fbus)
+                        sheet.write(row_idx, 3, branch.tbus)
+                        sheet.write(row_idx, 4, int(year))
+                        sheet.write(row_idx, 5, day)
+                        sheet.write(row_idx, 6, 'I, [%]')
+                        sheet.write(row_idx, 7, 'Expected')
+                        sheet.write(row_idx, 8, '-')
+                        for p in range(network[year][day].num_instants):
+                            sheet.write(row_idx, p + 9, expected_values[k][p] / rating, perc_style)
+                        row_idx = row_idx + 1
+
+    return row_idx
+
+
+# ======================================================================================================================
+#   Aux functions
+# ======================================================================================================================
+def _add_shared_energy_storage_to_transmission_network(planning_problem):
+    for year in planning_problem.years:
+        for day in planning_problem.days:
+            s_base = planning_problem.transmission_network.network[year][day].baseMVA
+            for node_id in planning_problem.distribution_networks:
+                shared_energy_storage = SharedEnergyStorage()
+                shared_energy_storage.bus = node_id
+                shared_energy_storage.dn_name = planning_problem.distribution_networks[node_id].name
+                shared_energy_storage.s = shared_energy_storage.s / s_base
+                shared_energy_storage.e = shared_energy_storage.e / s_base
+                planning_problem.transmission_network.network[year][day].shared_energy_storages.append(shared_energy_storage)
+
+
+def _add_shared_energy_storage_to_distribution_network(planning_problem):
+    for year in planning_problem.years:
+        for day in planning_problem.days:
+            for node_id in planning_problem.distribution_networks:
+                s_base = planning_problem.distribution_networks[node_id].network[year][day].baseMVA
+                shared_energy_storage = SharedEnergyStorage()
+                shared_energy_storage.bus = planning_problem.distribution_networks[node_id].network[year][day].get_reference_node_id()
+                shared_energy_storage.dn_name = planning_problem.distribution_networks[node_id].network[year][day].name
+                shared_energy_storage.s = shared_energy_storage.s / s_base
+                shared_energy_storage.e = shared_energy_storage.e / s_base
+                planning_problem.distribution_networks[node_id].network[year][day].shared_energy_storages.append(shared_energy_storage)
