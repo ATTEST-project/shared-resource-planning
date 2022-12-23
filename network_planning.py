@@ -47,11 +47,11 @@ class NetworkPlanning:
                 results[year][day] = run_smopf(model[year][day], self.params.solver_params, from_warm_start=from_warm_start)
         return results
 
-    def compute_primal_value(self, model):
+    def compute_primal_value(self, model, params):
         obj = 0.0
         for year in self.years:
             for day in self.days:
-                obj += self.network[year][day].compute_objective_function_value(model[year][day], self.params)
+                obj += self.network[year][day].compute_objective_function_value(model[year][day], params)
         return obj
 
     def process_results(self, model, results):

@@ -59,14 +59,6 @@ def shared_resources_planning(working_directory, specification_filename):
     planning_problem.read_planning_problem()
     planning_problem.run_planning_problem()
 
-    '''
-    transmission_network = planning_problem.transmission_network
-    tso_model = transmission_network.build_model()
-    optim_results = transmission_network.optimize(tso_model)
-    processed_results = transmission_network.process_results(tso_model, optim_results)
-    transmission_network.write_optimization_results_to_excel(processed_results)
-    '''
-
     print('==========================================================================================================')
     print('                                               END                                                        ')
     print('==========================================================================================================')
@@ -74,7 +66,7 @@ def shared_resources_planning(working_directory, specification_filename):
 
 # ======================================================================================================================
 #  Main
-# ======================================================================================================================
+# ============================================================================cal==========================================
 if __name__ == '__main__':
 
     filename, test_case = read_execution_arguments(sys.argv[1:])

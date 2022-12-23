@@ -130,14 +130,14 @@ def _run_planning_problem(planning_problem):
     # Benders' main cycle
     while iter < benders_parameters.num_max_iters and not convergence:
 
+        print(f'================================================== ITERATION #{iter} =================================================')
+
         print(f'[INFO] Iter {iter}. LB = {lower_bound}, UB = {upper_bound}')
         _print_candidate_solution(candidate_solution)
 
         # 5. Subproblem
         # 5.1. Solve subproblem(s), with fixed investment variables
         planning_problem.update_models_with_candidate_solution(tso_model, dso_models, esso_subproblem_model, candidate_solution)
-
-        #operational_results['esso'] = shared_ess_data.optimize(esso_subproblem_model)
         operational_results = planning_problem.run_operational_planning(esso_subproblem_model, tso_model, dso_models, consensus_vars, dual_vars)
 
         # 5.2. Get coupling constraints' sensitivities (subproblem)
@@ -242,7 +242,7 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
 
     # ------------------------------------------------------------------------------------------------------------------
     # 0. Initialization
-    start = time.time()
+    #start = time.time()
     primal_evolution = list()
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -252,8 +252,6 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
     for iter in range(admm_parameters.num_max_iters):
 
         iter_start = time.time()
-
-        print(f'================================================== ITERATION #{num_iter} =================================================')
 
         # --------------------------------------------------------------------------------------------------------------
         # 2. Solve TSO problem
@@ -316,6 +314,7 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
         print('Iter {}... {:.2f} s'.format(num_iter, iter_end - iter_start))
         num_iter += 1
 
+    '''
     if convergence:
         end = time.time()
         print('[INFO] Success. ADMM converged in {} iterations!'.format(num_iter))
@@ -323,6 +322,10 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
         planning_problem.write_operational_planning_results_to_excel(tso_model, dso_models, esso_model, results, primal_evolution=primal_evolution)
     else:
         print('[WARNING] ADMM did NOT converge in {} iterations!'.format(admm_parameters.num_max_iters))
+    '''
+
+    if not convergence:
+        print(f'[WARNING] ADMM did NOT converge in {admm_parameters.num_max_iters} iterations!')
 
     return results
 
@@ -423,7 +426,7 @@ def create_transmission_network_model(transmission_network, interface_v_vars, in
             for dn in tso_model[year][day].active_distribution_networks:
                 node_id = transmission_network.active_distribution_network_nodes[dn]
                 for p in tso_model[year][day].periods:
-                    v_mag = pe.value(tso_model[year][day].expected_interface_vmag[dn, p])
+                    v_mag = sqrt(pe.value(tso_model[year][day].expected_interface_vmag_sqr[dn, p]))
                     interface_pf_p = pe.value(tso_model[year][day].expected_interface_pf_p[dn, p]) * s_base
                     interface_pf_q = pe.value(tso_model[year][day].expected_interface_pf_q[dn, p]) * s_base
                     interface_v_vars[node_id][year][day][p] = v_mag
@@ -723,7 +726,7 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
 
                 # Update VOLTAGE variables at connection point
                 for p in model[year][day].periods:
-                    model[year][day].expected_interface_vmag[p].fix(interface_vmag[node_id][year][day][p])
+                    model[year][day].expected_interface_vmag_sqr[p].fix(interface_vmag[node_id][year][day][p]**2)
 
                 # Update POWER FLOW variables at connection point
                 for p in model[year][day].periods:
@@ -798,7 +801,7 @@ def _update_interface_power_flow_variables(planning_problem, tso_model, dso_mode
             for day in planning_problem.days:
                 s_base = planning_problem.transmission_network.network[year][day].baseMVA
                 for p in tso_model[year][day].periods:
-                    interface_vars['v'][node_id][year][day][p] = pe.value(tso_model[year][day].expected_interface_vmag[dn, p])
+                    interface_vars['v'][node_id][year][day][p] = sqrt(pe.value(tso_model[year][day].expected_interface_vmag_sqr[dn, p]))
                     interface_vars['pf']['tso'][node_id][year][day]['p'][p] = pe.value(tso_model[year][day].expected_interface_pf_p[dn, p]) * s_base
                     interface_vars['pf']['tso'][node_id][year][day]['q'][p] = pe.value(tso_model[year][day].expected_interface_pf_q[dn, p]) * s_base
 
@@ -906,7 +909,7 @@ def compute_primal_value(planning_problem, tso_model, esso_model):
     shared_ess_data = planning_problem.shared_ess_data
 
     primal_value = 0.0
-    primal_value += transmission_network.compute_primal_value(tso_model)
+    primal_value += transmission_network.compute_primal_value(tso_model, transmission_network.params)
     if esso_model:
         primal_value += shared_ess_data.compute_primal_value(esso_model)
 
@@ -936,12 +939,6 @@ def primal_convergence(planning_problem, consensus_vars, params):
                     sum_sqr += (interface_vars['tso'][node_id][year][day]['q'][p] - interface_vars['dso'][node_id][year][day]['q'][p]) ** 2
                     num_elems += 2
 
-    sum_total = sqrt(sum_sqr)
-    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=0.50, abs_tol=params.tol):
-        print('Convergence primal PF failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
-    else:
-        print('Convergence primal PF ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
-
     # Shared Energy Storage
     for node_id in planning_problem.active_distribution_network_nodes:
         shared_ess_idx = planning_problem.shared_ess_data.get_shared_energy_storage_idx(node_id)
@@ -956,10 +953,10 @@ def primal_convergence(planning_problem, consensus_vars, params):
 
     sum_total = sqrt(sum_sqr)
     if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
-        print('Convergence primal failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+        #print('Convergence primal failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
         return False
 
-    print('Convergence primal ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    #print('Convergence primal ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
     return True
 
 
@@ -983,12 +980,6 @@ def dual_convergence(planning_problem, consensus_vars, params):
                     sum_sqr += rho_pf * (interface_vars['tso'][node_id][year][day]['q'][p] - interface_vars['dso'][node_id][year][day]['q'][p]) ** 2
                     num_elems += 2
 
-    sum_total = sqrt(sum_sqr)
-    if sum_total > params.tol * sqrt(num_elems) and isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=0.50, abs_tol=params.tol):
-        print('Convergence dual PF failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
-    else:
-        print('Convergence dual PF ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
-
     # Shared Energy Storage
     for node_id in planning_problem.distribution_networks:
         distribution_network = planning_problem.distribution_networks[node_id]
@@ -1003,10 +994,10 @@ def dual_convergence(planning_problem, consensus_vars, params):
 
     sum_total = sqrt(sum_sqr)
     if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
-        print('Convergence dual failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+        #print('Convergence dual failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
         return False
 
-    print('Convergence dual ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    #print('Convergence dual ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
     return True
 
 
@@ -1326,7 +1317,8 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
         _write_network_generation_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'losses')
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'ratio')
-        _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'current')
+        _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'current_perc')
+        _write_network_branch_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results)
 
     results_filename = os.path.join(planning_problem.results_dir, filename + '.xls')
     try:
@@ -1375,7 +1367,7 @@ def _write_main_info_to_excel(shared_ess_data, workbook, results):
 
     # Number of operation (reserve activation) scenarios
     line += 1
-    sheet.write(line, 0, 'Number of operation scenarios')
+    sheet.write(line, 0, 'Number of operation scenarios (Shared ESS)')
     sheet.write(line, 1, len(shared_ess_data.prob_operation_scenarios))
 
 
@@ -1592,7 +1584,6 @@ def _write_bound_evolution_to_excel(workbook, bound_evolution):
 # ======================================================================================================================
 def _write_operational_planning_results_to_excel(planning_problem, results, primal_evolution=list(), filename='operation_planning_results'):
 
-    num_instants = planning_problem.num_instants
     wb = xlwt.Workbook()
 
     _write_objective_function_values(wb, results)
@@ -1611,9 +1602,9 @@ def _write_operational_planning_results_to_excel(planning_problem, results, prim
     _write_network_voltage_results_to_excel(planning_problem, wb, results)
     _write_network_consumption_results_to_excel(planning_problem, wb, results)
     _write_network_generation_results_to_excel(planning_problem, wb, results)
-    _write_network_branch_results_to_excel(planning_problem, wb, results, 'losses', num_instants)
-    _write_network_branch_results_to_excel(planning_problem, wb, results, 'ratio', num_instants)
-    _write_network_branch_results_to_excel(planning_problem, wb, results, 'current', num_instants)
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'losses')
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'ratio')
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'current_perc')
 
     # Save results
     results_filename = os.path.join(planning_problem.results_dir, filename + '.xls')
@@ -2070,6 +2061,8 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
 
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
     for year in results:
         for day in results[year]:
 
@@ -2080,7 +2073,7 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
                 expected_vang[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
 
             for s_m in results[year][day]:
-                if s_m != 'runtime' and s_m != 'obj':
+                if s_m not in exclusions:
                     omega_m = network[year][day].prob_market_scenarios[s_m]
                     for s_o in results[year][day][s_m]:
                         omega_s = network[year][day].prob_operation_scenarios[s_o]
@@ -2186,6 +2179,8 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
 
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
     for year in results:
         for day in results[year]:
 
@@ -2204,7 +2199,7 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                 expected_qc[node.bus_i] = [0.0 for _ in range(network[year][day].num_instants)]
 
             for s_m in results[year][day]:
-                if s_m != 'runtime' and s_m != 'obj':
+                if s_m not in exclusions:
                     omega_m = network[year][day].prob_market_scenarios[s_m]
                     for s_o in results[year][day][s_m]:
                         omega_s = network[year][day].prob_operation_scenarios[s_o]
@@ -2435,6 +2430,8 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
 
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
     for year in results:
         for day in results[year]:
 
@@ -2449,7 +2446,7 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
                 expected_qg[generator.gen_id] = [0.0 for _ in range(network[year][day].num_instants)]
 
             for s_m in results[year][day]:
-                if s_m != 'obj' and s_m != 'runtime':
+                if s_m not in exclusions:
                     omega_m = network[year][day].prob_market_scenarios[s_m]
                     for s_o in results[year][day][s_m]:
                         omega_s = network[year][day].prob_operation_scenarios[s_o]
@@ -2607,12 +2604,12 @@ def _write_network_branch_results_to_excel(planning_problem, workbook, results, 
     decimal_style.num_format_str = '0.00'
 
     sheet_name = str()
-    if result_type == 'current':
-        sheet_name = 'Branch Current'
-    elif result_type == 'losses':
+    if result_type == 'losses':
         sheet_name = 'Branch Losses'
     elif result_type == 'ratio':
         sheet_name = 'Transformer Ratio'
+    elif result_type == 'current_perc':
+        sheet_name = 'Current'
     sheet = workbook.add_sheet(sheet_name)
 
     # Write Header
@@ -2647,13 +2644,15 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
     perc_style = xlwt.XFStyle()
     perc_style.num_format_str = '0.00%'
 
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
     aux_string = str()
-    if result_type == 'current':
-        aux_string = 'I, [A]'
-    elif result_type == 'losses':
+    if result_type == 'losses':
         aux_string = 'P, [MW]'
     elif result_type == 'ratio':
         aux_string = 'Ratio'
+    elif result_type == 'current_perc':
+        aux_string = 'I, [%]'
 
     for year in results:
         for day in results[year]:
@@ -2663,7 +2662,7 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
                 expected_values[k] = [0.0 for _ in range(network[year][day].num_instants)]
 
             for s_m in results[year][day]:
-                if s_m != 'runtime' and s_m != 'obj':
+                if s_m not in exclusions:
                     omega_m = network[year][day].prob_market_scenarios[s_m]
                     for s_o in results[year][day][s_m]:
                         omega_s = network[year][day].prob_operation_scenarios[s_o]
@@ -2682,26 +2681,12 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
                                 sheet.write(row_idx, 8, s_o)
                                 for p in range(network[year][day].num_instants):
                                     value = results[year][day][s_m][s_o]['branches'][result_type][k][p]
-                                    sheet.write(row_idx, p + 9, value, decimal_style)
+                                    if result_type == 'current_perc':
+                                        sheet.write(row_idx, p + 9, value, perc_style)
+                                    else:
+                                        sheet.write(row_idx, p + 9, value, decimal_style)
                                     expected_values[k][p] += value * omega_m * omega_s
                                 row_idx = row_idx + 1
-
-                                if result_type == 'current':
-                                    rating = network[year][day].branches[k].rate_a
-                                    sheet.write(row_idx, 0, operator_type)
-                                    sheet.write(row_idx, 1, tn_node_id)
-                                    sheet.write(row_idx, 2, branch.fbus)
-                                    sheet.write(row_idx, 3, branch.tbus)
-                                    sheet.write(row_idx, 4, int(year))
-                                    sheet.write(row_idx, 5, day)
-                                    sheet.write(row_idx, 6, 'I, [%]')
-                                    sheet.write(row_idx, 7, s_m)
-                                    sheet.write(row_idx, 8, s_o)
-                                    for p in range(network[year][day].num_instants):
-                                        value = results[year][day][s_m][s_o]['branches'][result_type][k][p] / rating
-                                        sheet.write(row_idx, p + 9, value, perc_style)
-                                        expected_values[k][p] += value * omega_m * omega_s
-                                    row_idx = row_idx + 1
 
             for k in range(len(network[year][day].branches)):
                 branch = network[year][day].branches[k]
@@ -2717,23 +2702,439 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
                     sheet.write(row_idx, 7, 'Expected')
                     sheet.write(row_idx, 8, '-')
                     for p in range(network[year][day].num_instants):
-                        sheet.write(row_idx, p + 9, expected_values[k][p], decimal_style)
+                        if result_type == 'current_perc':
+                            sheet.write(row_idx, p + 9, expected_values[k][p], perc_style)
+                        else:
+                            sheet.write(row_idx, p + 9, expected_values[k][p], decimal_style)
                     row_idx = row_idx + 1
 
-                    if result_type == 'current':
-                        rating = network[year][day].branches[k].rate_a
-                        sheet.write(row_idx, 0, operator_type)
-                        sheet.write(row_idx, 1, tn_node_id)
-                        sheet.write(row_idx, 2, branch.fbus)
-                        sheet.write(row_idx, 3, branch.tbus)
-                        sheet.write(row_idx, 4, int(year))
-                        sheet.write(row_idx, 5, day)
-                        sheet.write(row_idx, 6, 'I, [%]')
-                        sheet.write(row_idx, 7, 'Expected')
-                        sheet.write(row_idx, 8, '-')
-                        for p in range(network[year][day].num_instants):
-                            sheet.write(row_idx, p + 9, expected_values[k][p] / rating, perc_style)
-                        row_idx = row_idx + 1
+    return row_idx
+
+
+def _write_network_branch_power_flow_results_to_excel(planning_problem, workbook, results):
+
+    row_idx = 0
+    sheet = workbook.add_sheet('Power Flows')
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Operator')
+    sheet.write(row_idx, 1, 'Connection Node ID')
+    sheet.write(row_idx, 2, 'Network Node ID')
+    sheet.write(row_idx, 3, 'Generator ID')
+    sheet.write(row_idx, 4, 'Type')
+    sheet.write(row_idx, 5, 'Year')
+    sheet.write(row_idx, 6, 'Day')
+    sheet.write(row_idx, 7, 'Quantity')
+    sheet.write(row_idx, 8, 'Market Scenario')
+    sheet.write(row_idx, 9, 'Operation Scenario')
+    for p in range(planning_problem.num_instants):
+        sheet.write(0, p + 10, p + 1)
+    row_idx = row_idx + 1
+
+    # Write results -- TSO
+    transmission_network = planning_problem.transmission_network.network
+    row_idx = _write_network_power_flow_results_per_operator(transmission_network, sheet, 'TSO', row_idx, results['tso']['results'])
+
+    # Write results -- DSOs
+    for tn_node_id in results['dso']:
+        dso_results = results['dso'][tn_node_id]['results']
+        distribution_network = planning_problem.distribution_networks[tn_node_id].network
+        row_idx = _write_network_power_flow_results_per_operator(distribution_network, sheet, 'DSO', row_idx, dso_results, tn_node_id=tn_node_id)
+
+
+def _write_network_power_flow_results_per_operator(network, sheet, operator_type, row_idx, results, tn_node_id='-'):
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+    perc_style = xlwt.XFStyle()
+    perc_style.num_format_str = '0.00%'
+
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
+    for year in results:
+        for day in results[year]:
+
+            expected_values = {'pij': {}, 'pji': {}, 'qij': {}, 'qji': {}, 'sij': {}, 'sji': {}}
+            for k in range(len(network[year][day].branches)):
+                expected_values['pij'][k] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_values['pji'][k] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_values['qij'][k] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_values['qji'][k] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_values['sij'][k] = [0.0 for _ in range(network[year][day].num_instants)]
+                expected_values['sji'][k] = [0.0 for _ in range(network[year][day].num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m not in exclusions:
+                    omega_m = network[year][day].prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network[year][day].prob_operation_scenarios[s_o]
+                        for k in range(len(network[year][day].branches)):
+
+                            branch = network[year][day].branches[k]
+                            rating = branch.rate_a
+                            if rating == 0.0:
+                                rating = BRANCH_UNKNOWN_RATING
+
+                            # Pij, [MW]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'P, [MW]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = results[year][day][s_m][s_o]['branches']['power_flow']['pij'][k][p]
+                                sheet.write(row_idx, p + 9, value, decimal_style)
+                                expected_values['pij'][k][p] += value * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Pij, [%]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'P, [%]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = abs(results[year][day][s_m][s_o]['branches']['power_flow']['pij'][k][p] / rating)
+                                sheet.write(row_idx, p + 9, value, perc_style)
+                            row_idx = row_idx + 1
+
+                            # Pji, [MW]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'P, [MW]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = results[year][day][s_m][s_o]['branches']['power_flow']['pji'][k][p]
+                                sheet.write(row_idx, p + 9, value, decimal_style)
+                                expected_values['pji'][k][p] += value * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Pji, [%]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'P, [%]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = abs(results[year][day][s_m][s_o]['branches']['power_flow']['pji'][k][p] / rating)
+                                sheet.write(row_idx, p + 9, value, perc_style)
+                            row_idx = row_idx + 1
+
+                            # Qij, [MVAr]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'Q, [MVAr]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = results[year][day][s_m][s_o]['branches']['power_flow']['qij'][k][p]
+                                sheet.write(row_idx, p + 9, value, decimal_style)
+                                expected_values['qij'][k][p] += value * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Qij, [%]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'Q, [%]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = abs(results[year][day][s_m][s_o]['branches']['power_flow']['qij'][k][p] / rating)
+                                sheet.write(row_idx, p + 9, value, perc_style)
+                            row_idx = row_idx + 1
+
+                            # Qji, [MW]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'Q, [MVAr]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = results[year][day][s_m][s_o]['branches']['power_flow']['qji'][k][p]
+                                sheet.write(row_idx, p + 9, value, decimal_style)
+                                expected_values['qji'][k][p] += value * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Qji, [%]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'Q, [%]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = abs(results[year][day][s_m][s_o]['branches']['power_flow']['qji'][k][p] / rating)
+                                sheet.write(row_idx, p + 9, value, perc_style)
+                            row_idx = row_idx + 1
+
+                            # Sij, [MVA]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'S, [MVA]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = results[year][day][s_m][s_o]['branches']['power_flow']['sij'][k][p]
+                                sheet.write(row_idx, p + 9, value, decimal_style)
+                                expected_values['sij'][k][p] += value * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Sij, [%]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'S, [%]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = abs(results[year][day][s_m][s_o]['branches']['power_flow']['sij'][k][p] / rating)
+                                sheet.write(row_idx, p + 9, value, perc_style)
+                            row_idx = row_idx + 1
+
+                            # Sji, [MW]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'S, [MVA]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = results[year][day][s_m][s_o]['branches']['power_flow']['sji'][k][p]
+                                sheet.write(row_idx, p + 9, value, decimal_style)
+                                expected_values['sji'][k][p] += value * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            # Sji, [%]
+                            sheet.write(row_idx, 0, operator_type)
+                            sheet.write(row_idx, 1, tn_node_id)
+                            sheet.write(row_idx, 2, branch.fbus)
+                            sheet.write(row_idx, 3, branch.tbus)
+                            sheet.write(row_idx, 4, int(year))
+                            sheet.write(row_idx, 5, day)
+                            sheet.write(row_idx, 6, 'S, [%]')
+                            sheet.write(row_idx, 7, s_m)
+                            sheet.write(row_idx, 8, s_o)
+                            for p in range(network[year][day].num_instants):
+                                value = abs(results[year][day][s_m][s_o]['branches']['power_flow']['sji'][k][p] / rating)
+                                sheet.write(row_idx, p + 9, value, perc_style)
+                            row_idx = row_idx + 1
+
+            for k in range(len(network[year][day].branches)):
+
+                branch = network[year][day].branches[k]
+                rating = branch.rate_a
+                if rating == 0.0:
+                    rating = BRANCH_UNKNOWN_RATING
+
+                # Pij, [MW]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.fbus)
+                sheet.write(row_idx, 3, branch.tbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'P, [MW]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, expected_values['pij'][k][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Pij, [%]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.fbus)
+                sheet.write(row_idx, 3, branch.tbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'P, [%]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, abs(expected_values['pij'][k][p]) / rating, perc_style)
+                row_idx = row_idx + 1
+
+                # Pji, [MW]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.tbus)
+                sheet.write(row_idx, 3, branch.fbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'P, [MW]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, expected_values['pji'][k][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Pji, [%]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.tbus)
+                sheet.write(row_idx, 3, branch.fbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'P, [%]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, abs(expected_values['pji'][k][p]) / rating, perc_style)
+                row_idx = row_idx + 1
+
+                # Qij, [MVAr]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.fbus)
+                sheet.write(row_idx, 3, branch.tbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'Q, [MVAr]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, expected_values['qij'][k][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Qij, [%]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.fbus)
+                sheet.write(row_idx, 3, branch.tbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'Q, [%]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, abs(expected_values['qij'][k][p]) / rating, perc_style)
+                row_idx = row_idx + 1
+
+                # Qji, [MVAr]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.tbus)
+                sheet.write(row_idx, 3, branch.fbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'Q, [MVAr]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, expected_values['qji'][k][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Qji, [%]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.tbus)
+                sheet.write(row_idx, 3, branch.fbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'Q, [%]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, abs(expected_values['qji'][k][p]) / rating, decimal_style)
+                row_idx = row_idx + 1
+
+                # Sij, [MVA]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.fbus)
+                sheet.write(row_idx, 3, branch.tbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'S, [MVA]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, expected_values['sij'][k][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Sij, [%]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.fbus)
+                sheet.write(row_idx, 3, branch.tbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'S, [%]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, abs(expected_values['sij'][k][p]) / rating, perc_style)
+                row_idx = row_idx + 1
+
+                # Sji, [MVA]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.tbus)
+                sheet.write(row_idx, 3, branch.fbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'S, [MVA]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, expected_values['sji'][k][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Sji, [%]
+                sheet.write(row_idx, 0, operator_type)
+                sheet.write(row_idx, 1, tn_node_id)
+                sheet.write(row_idx, 2, branch.tbus)
+                sheet.write(row_idx, 3, branch.fbus)
+                sheet.write(row_idx, 4, int(year))
+                sheet.write(row_idx, 5, day)
+                sheet.write(row_idx, 6, 'S, [%]')
+                sheet.write(row_idx, 7, 'Expected')
+                sheet.write(row_idx, 8, '-')
+                for p in range(network[year][day].num_instants):
+                    sheet.write(row_idx, p + 9, abs(expected_values['sji'][k][p]) / rating, perc_style)
+                row_idx = row_idx + 1
 
     return row_idx
 

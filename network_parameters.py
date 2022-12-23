@@ -13,6 +13,7 @@ class NetworkParameters:
         self.fl_reg = True
         self.rg_curt = False
         self.l_curt = False
+        self.ess_relax = True
         self.enforce_vg = False
         self.slack_line_limits = False
         self.slack_voltage_limits = False
@@ -55,6 +56,8 @@ def _read_network_parameters_from_file(parameters, filename):
                     parameters.rg_curt = read_bool_parameter(tokens[1])
                 elif param_type == 'l_curt':
                     parameters.l_curt = read_bool_parameter(tokens[1])
+                elif param_type == 'ess_relax':
+                    parameters.ess_relax = read_bool_parameter(tokens[1])
                 elif param_type == 'enforce_vg':
                     parameters.enforce_vg = read_bool_parameter(tokens[1])
                 elif param_type == 'slack_line_limits':
