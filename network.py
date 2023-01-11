@@ -101,17 +101,6 @@ class Network:
         print(f'[ERROR] Network {self.name}. Node {node_id} not found! Check network.')
         exit(ERROR_NETWORK_FILE)
 
-    def get_branch_ibase(self, branch_idx):
-        branch = self.branches[branch_idx]
-        vbase = min(self.get_node_base_voltage(branch.fbus), self.get_node_base_voltage(branch.tbus))
-        # Note: in case vbase is not given
-        if vbase == 0.0:
-            if self.is_transmission:
-                vbase = UNKNOWN_TRANSMISSION_VOLTAGE_LEVEL
-            else:
-                vbase = UNKNOWN_DISTRIBUTION_VOLTAGE_LEVEL
-        return self.baseMVA / vbase
-
     def get_gen_idx(self, node_id):
         for g in range(len(self.generators)):
             gen = self.generators[g]
