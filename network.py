@@ -2036,7 +2036,7 @@ def _compute_objective_function_value(network, model, params):
     if params.obj_type == OBJ_MIN_COST:
 
         c_p = network.cost_energy_p
-        c_q = network.cost_energy_q
+        #c_q = network.cost_energy_q
 
         for s_m in model.scenarios_market:
             for s_o in model.scenarios_operation:
@@ -2048,7 +2048,7 @@ def _compute_objective_function_value(network, model, params):
                     if network.generators[g].is_controllable():
                         for p in model.periods:
                             obj_scenario += c_p[s_m][p] * network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
-                            obj_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
+                            #obj_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
 
                 # Demand side flexibility
                 if params.fl_reg:
@@ -2105,7 +2105,7 @@ def _compute_generation_cost(network, model):
     gen_cost = 0.0
 
     c_p = network.cost_energy_p
-    c_q = network.cost_energy_q
+    #c_q = network.cost_energy_q
 
     for s_m in model.scenarios_market:
         for s_o in model.scenarios_operation:
@@ -2114,7 +2114,7 @@ def _compute_generation_cost(network, model):
                 if network.generators[g].is_controllable():
                     for p in model.periods:
                         gen_cost_scenario += c_p[s_m][p] * network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
-                        gen_cost_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
+                        #gen_cost_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
 
             gen_cost += gen_cost_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
 

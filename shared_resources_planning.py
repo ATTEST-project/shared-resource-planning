@@ -703,7 +703,7 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
         distribution_network = distribution_networks[node_id]
         rho = params.rho[distribution_network.name]
 
-        #print('\t\t - Updating active distribution network connected to node {}...'.format(node_id))
+        print('\t\t - Updating active distribution network connected to node {}...'.format(node_id))
 
         for year in distribution_network.years:
             for day in distribution_network.days:
@@ -1077,7 +1077,6 @@ def _read_planning_problem(planning_problem):
                         distribution_network.discount_factor = planning_problem.discount_factor
                         distribution_network.prob_market_scenarios = planning_problem.prob_market_scenarios
                         distribution_network.cost_energy_p = planning_problem.cost_energy_p
-                        distribution_network.cost_energy_q = planning_problem.cost_energy_q
                         distribution_network.params_file = params_file
                         distribution_network.read_network_parameters()
                         distribution_network.read_network_planning_data()
@@ -1109,7 +1108,6 @@ def _read_planning_problem(planning_problem):
                     transmission_network.discount_factor = planning_problem.discount_factor
                     transmission_network.prob_market_scenarios = planning_problem.prob_market_scenarios
                     transmission_network.cost_energy_p = planning_problem.cost_energy_p
-                    transmission_network.cost_energy_q = planning_problem.cost_energy_q
                     transmission_network.params_file = params_file
                     transmission_network.read_network_parameters()
                     transmission_network.read_network_planning_data()
@@ -1141,7 +1139,6 @@ def _read_planning_problem(planning_problem):
                     shared_ess_data.discount_factor = planning_problem.discount_factor
                     shared_ess_data.prob_market_scenarios = planning_problem.prob_market_scenarios
                     shared_ess_data.cost_energy_p = planning_problem.cost_energy_p
-                    shared_ess_data.cost_energy_q = planning_problem.cost_energy_q
                     shared_ess_data.cost_secondary_reserve = planning_problem.cost_secondary_reserve
                     shared_ess_data.cost_tertiary_reserve_up = planning_problem.cost_tertiary_reserve_up
                     shared_ess_data.cost_tertiary_reserve_down = planning_problem.cost_tertiary_reserve_down
@@ -1181,13 +1178,11 @@ def _read_market_data_from_file(planning_problem):
             num_scenarios, prob_scenarios = _get_market_scenarios_info_from_excel_file(filename, 'Scenarios')
             planning_problem.prob_market_scenarios = prob_scenarios
             planning_problem.cost_energy_p[year] = dict()
-            planning_problem.cost_energy_q[year] = dict()
             planning_problem.cost_secondary_reserve[year] = dict()
             planning_problem.cost_tertiary_reserve_up[year] = dict()
             planning_problem.cost_tertiary_reserve_down[year] = dict()
             for day in planning_problem.days:
                 planning_problem.cost_energy_p[year][day] = _get_market_costs_from_excel_file(filename, f'Cp, {day}', num_scenarios)
-                planning_problem.cost_energy_q[year][day] = _get_market_costs_from_excel_file(filename, f'Cq, {day}', num_scenarios)
                 planning_problem.cost_secondary_reserve[year][day] = _get_market_costs_from_excel_file(filename, f'Csr, {day}', num_scenarios)
                 planning_problem.cost_tertiary_reserve_up[year][day] = _get_market_costs_from_excel_file(filename, f'Ctr_up, {day}', num_scenarios)
                 planning_problem.cost_tertiary_reserve_down[year][day] = _get_market_costs_from_excel_file(filename, f'Ctr_down, {day}', num_scenarios)
