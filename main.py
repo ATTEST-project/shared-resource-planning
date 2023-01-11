@@ -69,15 +69,15 @@ def shared_resources_planning(working_directory, specification_filename):
 # ============================================================================cal==========================================
 if __name__ == '__main__':
 
+    '''
     filename, test_case = read_execution_arguments(sys.argv[1:])
     directory = os.path.join(os.getcwd(), 'data', test_case)
     shared_resources_planning(directory, filename)
+    '''
 
-    '''
     filename = 'HR1.txt'
-    directory = os.path.join(os.getcwd(), 'data', 'HR')
+    directory = os.path.join(os.getcwd(), 'data', 'HR1_2')
     shared_resources_planning(directory, filename)
-    '''
 
 
 

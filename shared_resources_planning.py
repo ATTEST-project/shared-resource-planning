@@ -31,7 +31,6 @@ class SharedResourcesPlanning:
         self.num_instants = 0
         self.discount_factor = 0.00
         self.cost_energy_p = dict()
-        self.cost_energy_q = dict()
         self.cost_secondary_reserve = dict()
         self.cost_tertiary_reserve_up = dict()
         self.cost_tertiary_reserve_down = dict()
@@ -313,16 +312,6 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
         iter_end = time.time()
         print('Iter {}... {:.2f} s'.format(num_iter, iter_end - iter_start))
         num_iter += 1
-
-    '''
-    if convergence:
-        end = time.time()
-        print('[INFO] Success. ADMM converged in {} iterations!'.format(num_iter))
-        print('[INFO] Elapsed time = {:.2f} s.'.format(end - start))
-        planning_problem.write_operational_planning_results_to_excel(tso_model, dso_models, esso_model, results, primal_evolution=primal_evolution)
-    else:
-        print('[WARNING] ADMM did NOT converge in {} iterations!'.format(admm_parameters.num_max_iters))
-    '''
 
     if not convergence:
         print(f'[WARNING] ADMM did NOT converge in {admm_parameters.num_max_iters} iterations!')
