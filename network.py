@@ -952,9 +952,9 @@ def run_smopf(model, params, from_warm_start=False):
 
     if params.solver == 'ipopt':
         solver.options['linear_solver'] = params.linear_solver
+        solver.options['max_iter'] = 10000
         #solver.options['nlp_scaling_method'] = 'none'
         #solver.options['mu_init '] = 1e-6
-        #solver.options['max_iter '] = 100
 
     result = solver.solve(model, tee=params.verbose)
 
