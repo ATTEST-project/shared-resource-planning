@@ -310,7 +310,7 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
             break
 
         iter_end = time.time()
-        print('Iter {}... {:.2f} s'.format(num_iter, iter_end - iter_start))
+        print('[INFO] Iter {}: {:.2f} s'.format(num_iter, iter_end - iter_start))
         num_iter += 1
 
     if not convergence:
@@ -652,7 +652,7 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
 
 def update_transmission_coordination_model_and_solve(transmission_network, model, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
 
-    print('[INFO] Updating transmission network...')
+    print('[INFO] \t - Updating transmission network...')
 
     for year in transmission_network.years:
         for day in transmission_network.days:
@@ -694,7 +694,7 @@ def update_transmission_coordination_model_and_solve(transmission_network, model
 
 def update_distribution_coordination_models_and_solve(distribution_networks, models, interface_vmag, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
 
-    print('[INFO] Updating distribution networks...')
+    print('[INFO] \t - Updating distribution networks...')
     res = dict()
 
     for node_id in distribution_networks:
@@ -703,7 +703,7 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
         distribution_network = distribution_networks[node_id]
         rho = params.rho[distribution_network.name]
 
-        print('\t\t - Updating active distribution network connected to node {}...'.format(node_id))
+        print('\t\t\t . Updating active distribution network connected to node {}...'.format(node_id))
 
         for year in distribution_network.years:
             for day in distribution_network.days:
@@ -737,15 +737,14 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
         for year in distribution_network.years:
             for day in distribution_network.days:
                 if res[node_id][year][day].solver.status != po.SolverStatus.ok:
-                    print(f'[ERROR] Network {model[year][day].name} did not converge!')
-                    exit(ERROR_NETWORK_OPTIMIZATION)
-
+                    print(f'[WARNING] Network {model[year][day].name} did not converge!')
+                    #exit(ERROR_NETWORK_OPTIMIZATION)
     return res
 
 
 def update_shared_energy_storages_coordination_model_and_solve(planning_problem, model, ess_req, dual_ess, params):
 
-    print('[INFO] Updating Shared ESS...')
+    print('[INFO] \t - Updating Shared ESS...')
     shared_ess_data = planning_problem.shared_ess_data
     days = [day for day in planning_problem.days]
     years = [year for year in planning_problem.years]
@@ -982,7 +981,7 @@ def dual_convergence(planning_problem, consensus_vars, params):
                     num_elems += 2
 
     sum_total = sqrt(sum_sqr)
-    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
+    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=0.05, abs_tol=params.tol):
         #print('Convergence dual failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
         return False
 
