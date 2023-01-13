@@ -159,9 +159,9 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
     if network_planning.params.obj_type == OBJ_MIN_COST:
         _write_market_cost_values_to_excel(network_planning, wb)
     _write_network_voltage_results_to_excel(network_planning, wb, processed_results['results'])
-    '''
     _write_network_consumption_results_to_excel(network_planning, wb, processed_results['results'])
     _write_network_generation_results_to_excel(network_planning, wb, processed_results['results'])
+    '''
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'losses')
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'ratio')
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'current_perc')
@@ -384,7 +384,388 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                 sheet.write(row_idx, 4, 'Expected')
                 sheet.write(row_idx, 5, '-')
                 for p in range(network.num_instants):
-                    sheet.write(row_idx, p + 8, expected_vang[node_id][p], decimal_style)
+                    sheet.write(row_idx, p + 6, expected_vang[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+
+def _write_network_consumption_results_to_excel(network_planning, workbook, results):
+
+    row_idx = 0
+    sheet = workbook.add_sheet('Consumption')
+
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Network Node ID')
+    sheet.write(row_idx, 1, 'Year')
+    sheet.write(row_idx, 2, 'Day')
+    sheet.write(row_idx, 3, 'Quantity')
+    sheet.write(row_idx, 4, 'Market Scenario')
+    sheet.write(row_idx, 5, 'Operation Scenario')
+    for p in range(network_planning.num_instants):
+        sheet.write(0, p + 6, p + 0)
+    row_idx = row_idx + 1
+
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
+    for year in results:
+        for day in results[year]:
+
+            network = network_planning.network[year][day]
+
+            expected_pc = dict()
+            expected_flex_up = dict()
+            expected_flex_down = dict()
+            expected_pc_curt = dict()
+            expected_pnet = dict()
+            expected_qc = dict()
+            for node in network.nodes:
+                expected_pc[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+                expected_flex_up[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+                expected_flex_down[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+                expected_pc_curt[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+                expected_pnet[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+                expected_qc[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m not in exclusions:
+                    omega_m = network.prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network.prob_operation_scenarios[s_o]
+                        for node_id in results[year][day][s_m][s_o]['consumption']['pc']:
+
+                            # - Active Power
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'Pc, [MW]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(network.num_instants):
+                                pc = results[year][day][s_m][s_o]['consumption']['pc'][node_id][p]
+                                sheet.write(row_idx, p + 6, pc, decimal_style)
+                                expected_pc[node_id][p] += pc * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            if network_planning.params.fl_reg:
+
+                                # - Flexibility, up
+                                sheet.write(row_idx, 0, node_id)
+                                sheet.write(row_idx, 1, int(year))
+                                sheet.write(row_idx, 2, day)
+                                sheet.write(row_idx, 3, 'Flex Up, [MW]')
+                                sheet.write(row_idx, 4, s_m)
+                                sheet.write(row_idx, 5, s_o)
+                                for p in range(network.num_instants):
+                                    flex = results[year][day][s_m][s_o]['consumption']['p_up'][node_id][p]
+                                    sheet.write(row_idx, p + 6, flex, decimal_style)
+                                    expected_flex_up[node_id][p] += flex * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                                # - Flexibility, down
+                                sheet.write(row_idx, 0, node_id)
+                                sheet.write(row_idx, 1, int(year))
+                                sheet.write(row_idx, 2, day)
+                                sheet.write(row_idx, 3, 'Flex Down, [MW]')
+                                sheet.write(row_idx, 4, s_m)
+                                sheet.write(row_idx, 5, s_o)
+                                for p in range(network.num_instants):
+                                    flex = results[year][day][s_m][s_o]['consumption']['p_down'][node_id][p]
+                                    sheet.write(row_idx, p + 6, flex, decimal_style)
+                                    expected_flex_down[node_id][p] += flex * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            if network_planning.params.l_curt:
+
+                                # - Active power curtailment
+                                sheet.write(row_idx, 0, node_id)
+                                sheet.write(row_idx, 1, int(year))
+                                sheet.write(row_idx, 2, day)
+                                sheet.write(row_idx, 3, 'Pc_curt, [MW]')
+                                sheet.write(row_idx, 4, s_m)
+                                sheet.write(row_idx, 5, s_o)
+                                for p in range(network.num_instants):
+                                    pc_curt = results[year][day][s_m][s_o]['consumption']['pc_curt'][node_id][p]
+                                    sheet.write(row_idx, p + 6, pc_curt, decimal_style)
+                                    expected_pc_curt[node_id][p] += pc_curt * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            if network_planning.params.fl_reg or network_planning.params.l_curt:
+
+                                # - Active power net consumption
+                                sheet.write(row_idx, 0, node_id)
+                                sheet.write(row_idx, 1, int(year))
+                                sheet.write(row_idx, 2, day)
+                                sheet.write(row_idx, 3, 'Pc_net, [MW]')
+                                sheet.write(row_idx, 4, s_m)
+                                sheet.write(row_idx, 5, s_o)
+                                for p in range(network.num_instants):
+                                    p_net = results[year][day][s_m][s_o]['consumption']['pc_net'][node_id][p]
+                                    sheet.write(row_idx, p + 6, p_net, decimal_style)
+                                    expected_pnet[node_id][p] += p_net * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            # - Reactive power
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, int(year))
+                            sheet.write(row_idx, 2, day)
+                            sheet.write(row_idx, 3, 'Qc, [MVAr]')
+                            sheet.write(row_idx, 4, s_m)
+                            sheet.write(row_idx, 5, s_o)
+                            for p in range(network.num_instants):
+                                qc = results[year][day][s_m][s_o]['consumption']['qc'][node_id][p]
+                                sheet.write(row_idx, p + 6, qc, decimal_style)
+                                expected_qc[node_id][p] += qc * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+            for node in network.nodes:
+
+                node_id = node.bus_i
+
+                # - Active Power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'Pc, [MW]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(network.num_instants):
+                    sheet.write(row_idx, p + 6, expected_pc[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+                if network_planning.params.fl_reg:
+
+                    # - Flexibility, up
+                    sheet.write(row_idx, 0, node_id)
+                    sheet.write(row_idx, 1, int(year))
+                    sheet.write(row_idx, 2, day)
+                    sheet.write(row_idx, 3, 'Flex Up, [MW]')
+                    sheet.write(row_idx, 4, 'Expected')
+                    sheet.write(row_idx, 5, '-')
+                    for p in range(network.num_instants):
+                        sheet.write(row_idx, p + 6, expected_flex_up[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                    # - Flexibility, down
+                    sheet.write(row_idx, 0, node_id)
+                    sheet.write(row_idx, 1, int(year))
+                    sheet.write(row_idx, 2, day)
+                    sheet.write(row_idx, 3, 'Flex Down, [MW]')
+                    sheet.write(row_idx, 4, 'Expected')
+                    sheet.write(row_idx, 5, '-')
+                    for p in range(network.num_instants):
+                        sheet.write(row_idx, p + 6, expected_flex_down[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                if network_planning.params.l_curt:
+
+                    # - Load curtailment (active power)
+                    sheet.write(row_idx, 0, node_id)
+                    sheet.write(row_idx, 1, int(year))
+                    sheet.write(row_idx, 2, day)
+                    sheet.write(row_idx, 3, 'Pc_curt Up, [MW]')
+                    sheet.write(row_idx, 4, 'Expected')
+                    sheet.write(row_idx, 5, '-')
+                    for p in range(network.num_instants):
+                        sheet.write(row_idx, p + 6, expected_pc_curt[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                if network_planning.params.fl_reg or network_planning.params.l_curt:
+
+                    # - Active power net consumption
+                    sheet.write(row_idx, 0, node_id)
+                    sheet.write(row_idx, 1, int(year))
+                    sheet.write(row_idx, 2, day)
+                    sheet.write(row_idx, 3, 'Pc_net, [MW]')
+                    sheet.write(row_idx, 4, 'Expected')
+                    sheet.write(row_idx, 5, '-')
+                    for p in range(network.num_instants):
+                        sheet.write(row_idx, p + 6, expected_pnet[node_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                # - Reactive power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'Qc, [MVAr]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(network.num_instants):
+                    sheet.write(row_idx, p + 6, expected_qc[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+
+def _write_network_generation_results_to_excel(network_planning, workbook, results):
+
+    row_idx = 0
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+
+    sheet = workbook.add_sheet('Generation')
+
+    # Write Header
+    sheet.write(row_idx, 0, 'Network Node ID')
+    sheet.write(row_idx, 1, 'Generator ID')
+    sheet.write(row_idx, 2, 'Type')
+    sheet.write(row_idx, 3, 'Year')
+    sheet.write(row_idx, 4, 'Day')
+    sheet.write(row_idx, 5, 'Quantity')
+    sheet.write(row_idx, 6, 'Market Scenario')
+    sheet.write(row_idx, 7, 'Operation Scenario')
+    for p in range(network_planning.num_instants):
+        sheet.write(0, p + 8, p + 1)
+    row_idx = row_idx + 1
+
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
+    for year in results:
+        for day in results[year]:
+
+            network = network_planning.network[year][day]
+
+            expected_pg = dict()
+            expected_pg_curt = dict()
+            expected_pg_net = dict()
+            expected_qg = dict()
+
+            for generator in network.generators:
+                expected_pg[generator.gen_id] = [0.0 for _ in range(network.num_instants)]
+                expected_pg_curt[generator.gen_id] = [0.0 for _ in range(network.num_instants)]
+                expected_pg_net[generator.gen_id] = [0.0 for _ in range(network.num_instants)]
+                expected_qg[generator.gen_id] = [0.0 for _ in range(network.num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m not in exclusions:
+                    omega_m = network.prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network.prob_operation_scenarios[s_o]
+                        for g in results[year][day][s_m][s_o]['generation']['pg']:
+
+                            node_id = network.generators[g].bus
+                            gen_id = network.generators[g].gen_id
+                            gen_type = network.get_gen_type(gen_id)
+
+                            # Active Power
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, gen_id)
+                            sheet.write(row_idx, 2, gen_type)
+                            sheet.write(row_idx, 3, int(year))
+                            sheet.write(row_idx, 4, day)
+                            sheet.write(row_idx, 5, 'Pg, [MW]')
+                            sheet.write(row_idx, 6, s_m)
+                            sheet.write(row_idx, 7, s_o)
+                            for p in range(network.num_instants):
+                                pg = results[year][day][s_m][s_o]['generation']['pg'][g][p]
+                                sheet.write(row_idx, p + 8, pg, decimal_style)
+                                expected_pg[gen_id][p] += pg * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+                            if network_planning.params.rg_curt:
+
+                                # Active Power curtailment
+                                sheet.write(row_idx, 0, node_id)
+                                sheet.write(row_idx, 1, gen_id)
+                                sheet.write(row_idx, 2, gen_type)
+                                sheet.write(row_idx, 3, int(year))
+                                sheet.write(row_idx, 4, day)
+                                sheet.write(row_idx, 5, 'Pg_curt, [MW]')
+                                sheet.write(row_idx, 6, s_m)
+                                sheet.write(row_idx, 7, s_o)
+                                for p in range(network.num_instants):
+                                    pg_curt = results[year][day][s_m][s_o]['generation']['pg_curt'][g][p]
+                                    sheet.write(row_idx, p + 8, pg_curt, decimal_style)
+                                    expected_pg_curt[gen_id][p] += pg_curt * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                                # Active Power net
+                                sheet.write(row_idx, 0, node_id)
+                                sheet.write(row_idx, 1, gen_id)
+                                sheet.write(row_idx, 2, gen_type)
+                                sheet.write(row_idx, 3, int(year))
+                                sheet.write(row_idx, 4, day)
+                                sheet.write(row_idx, 5, 'Pg_net, [MW]')
+                                sheet.write(row_idx, 6, s_m)
+                                sheet.write(row_idx, 7, s_o)
+                                for p in range(network.num_instants):
+                                    pg_net = results[year][day][s_m][s_o]['generation']['pg_net'][g][p]
+                                    sheet.write(row_idx, p + 10, pg_net, decimal_style)
+                                    expected_pg_net[gen_id][p] += pg_net * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+                            # Reactive Power
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, gen_id)
+                            sheet.write(row_idx, 2, gen_type)
+                            sheet.write(row_idx, 3, int(year))
+                            sheet.write(row_idx, 4, day)
+                            sheet.write(row_idx, 5, 'Qg, [MVAr]')
+                            sheet.write(row_idx, 6, s_m)
+                            sheet.write(row_idx, 7, s_o)
+                            for p in range(network.num_instants):
+                                qg = results[year][day][s_m][s_o]['generation']['qg'][g][p]
+                                sheet.write(row_idx, p + 8, qg, decimal_style)
+                                expected_qg[gen_id][p] += qg * omega_m * omega_s
+                            row_idx = row_idx + 1
+
+            for generator in network.generators:
+
+                node_id = generator.bus
+                gen_id = generator.gen_id
+                gen_type = network.get_gen_type(gen_id)
+
+                # Active Power
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, gen_id)
+                sheet.write(row_idx, 2, gen_type)
+                sheet.write(row_idx, 3, int(year))
+                sheet.write(row_idx, 4, day)
+                sheet.write(row_idx, 5, 'Pg, [MW]')
+                sheet.write(row_idx, 6, 'Expected')
+                sheet.write(row_idx, 7, '-')
+                for p in range(network.num_instants):
+                    sheet.write(row_idx, p + 8, expected_pg[gen_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+                if network_planning.params.rg_curt:
+
+                    # Active Power curtailment
+                    sheet.write(row_idx, 0, node_id)
+                    sheet.write(row_idx, 1, gen_id)
+                    sheet.write(row_idx, 2, gen_type)
+                    sheet.write(row_idx, 3, int(year))
+                    sheet.write(row_idx, 4, day)
+                    sheet.write(row_idx, 5, 'Pg_curt, [MW]')
+                    sheet.write(row_idx, 6, 'Expected')
+                    sheet.write(row_idx, 7, '-')
+                    for p in range(network.num_instants):
+                        sheet.write(row_idx, p + 8, expected_pg_curt[gen_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                    # Active Power net
+                    sheet.write(row_idx, 0, node_id)
+                    sheet.write(row_idx, 1, gen_id)
+                    sheet.write(row_idx, 2, gen_type)
+                    sheet.write(row_idx, 3, int(year))
+                    sheet.write(row_idx, 4, day)
+                    sheet.write(row_idx, 5, 'Pg_net, [MW]')
+                    sheet.write(row_idx, 6, 'Expected')
+                    sheet.write(row_idx, 7, '-')
+                    for p in range(network.num_instants):
+                        sheet.write(row_idx, p + 8, expected_pg_net[gen_id][p], decimal_style)
+                    row_idx = row_idx + 1
+
+                # Reactive Power
+                sheet.write(row_idx, 2, node_id)
+                sheet.write(row_idx, 3, gen_id)
+                sheet.write(row_idx, 4, gen_type)
+                sheet.write(row_idx, 5, int(year))
+                sheet.write(row_idx, 6, day)
+                sheet.write(row_idx, 7, 'Qg, [MVAr]')
+                sheet.write(row_idx, 8, 'Expected')
+                sheet.write(row_idx, 9, '-')
+                for p in range(network.num_instants):
+                    sheet.write(row_idx, p + 10, expected_qg[gen_id][p], decimal_style)
                 row_idx = row_idx + 1
 
 
