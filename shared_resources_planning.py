@@ -1700,7 +1700,7 @@ def _write_interface_power_flow_results_to_excel(planning_problem, workbook, res
     sheet.write(row_idx, 5, 'Market Scenario')
     sheet.write(row_idx, 6, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 7, p + 1)
+        sheet.write(0, p + 7, p)
     row_idx = row_idx + 1
 
     # TSO's results
@@ -1847,7 +1847,7 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
     sheet.write(row_idx, 4, 'Market Scenario')
     sheet.write(row_idx, 5, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 6, p + 1)
+        sheet.write(0, p + 6, p)
 
     for year in results:
         for day in results[year]:
@@ -2394,7 +2394,7 @@ def _write_network_generation_results_to_excel(planning_problem, workbook, resul
     sheet.write(row_idx, 8, 'Market Scenario')
     sheet.write(row_idx, 9, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 10, p + 1)
+        sheet.write(0, p + 10, p)
     row_idx = row_idx + 1
 
     # Write results -- TSO
