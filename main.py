@@ -57,8 +57,9 @@ def shared_resources_planning(working_directory, specification_filename):
 
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
-    #planning_problem.run_planning_problem()
+    planning_problem.run_planning_problem()
 
+    '''
     distribution_networks = planning_problem.distribution_networks
     for node_id in distribution_networks:
         distribution_network = distribution_networks[node_id]
@@ -66,6 +67,7 @@ def shared_resources_planning(working_directory, specification_filename):
         results = distribution_network.optimize(dn_model)
         processed_results = distribution_network.process_results(dn_model, results)
         distribution_network.write_optimization_results_to_excel(processed_results)
+    '''
 
     print('==========================================================================================================')
     print('                                               END                                                        ')

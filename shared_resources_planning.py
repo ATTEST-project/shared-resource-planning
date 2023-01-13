@@ -2704,16 +2704,15 @@ def _write_network_branch_power_flow_results_to_excel(planning_problem, workbook
     # Write Header
     sheet.write(row_idx, 0, 'Operator')
     sheet.write(row_idx, 1, 'Connection Node ID')
-    sheet.write(row_idx, 2, 'Network Node ID')
-    sheet.write(row_idx, 3, 'Generator ID')
-    sheet.write(row_idx, 4, 'Type')
-    sheet.write(row_idx, 5, 'Year')
-    sheet.write(row_idx, 6, 'Day')
-    sheet.write(row_idx, 7, 'Quantity')
-    sheet.write(row_idx, 8, 'Market Scenario')
-    sheet.write(row_idx, 9, 'Operation Scenario')
+    sheet.write(row_idx, 2, 'From Node ID')
+    sheet.write(row_idx, 3, 'To Node ID')
+    sheet.write(row_idx, 4, 'Year')
+    sheet.write(row_idx, 5, 'Day')
+    sheet.write(row_idx, 6, 'Quantity')
+    sheet.write(row_idx, 7, 'Market Scenario')
+    sheet.write(row_idx, 8, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 10, p + 1)
+        sheet.write(0, p + 9, p + 0)
     row_idx = row_idx + 1
 
     # Write results -- TSO
