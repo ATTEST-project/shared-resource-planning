@@ -161,10 +161,10 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
     _write_network_voltage_results_to_excel(network_planning, wb, processed_results['results'])
     _write_network_consumption_results_to_excel(network_planning, wb, processed_results['results'])
     _write_network_generation_results_to_excel(network_planning, wb, processed_results['results'])
-    '''
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'losses')
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'ratio')
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'current_perc')
+    '''
     _write_network_branch_power_flow_results_to_excel(network_planning, wb, processed_results['results'])
     '''
 
@@ -300,8 +300,9 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
     row_idx = 0
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
-
     sheet = workbook.add_sheet('Voltage')
+
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     # Write Header
     sheet.write(row_idx, 0, 'Network Node ID')
@@ -313,8 +314,6 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
     for p in range(network_planning.num_instants):
         sheet.write(0, p + 6, p + 0)
     row_idx = row_idx + 1
-
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     for year in results:
         for day in results[year]:
@@ -392,9 +391,10 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
 
     row_idx = 0
     sheet = workbook.add_sheet('Consumption')
-
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
+
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     # Write Header
     sheet.write(row_idx, 0, 'Network Node ID')
@@ -407,7 +407,6 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
         sheet.write(0, p + 6, p + 0)
     row_idx = row_idx + 1
 
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     for year in results:
         for day in results[year]:
@@ -601,8 +600,9 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
     row_idx = 0
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
-
     sheet = workbook.add_sheet('Generation')
+
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     # Write Header
     sheet.write(row_idx, 0, 'Network Node ID')
@@ -616,8 +616,6 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
     for p in range(network_planning.num_instants):
         sheet.write(0, p + 8, p + 1)
     row_idx = row_idx + 1
-
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     for year in results:
         for day in results[year]:
@@ -767,6 +765,94 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                 for p in range(network.num_instants):
                     sheet.write(row_idx, p + 10, expected_qg[gen_id][p], decimal_style)
                 row_idx = row_idx + 1
+
+
+def _write_network_branch_results_to_excel(network_planning, workbook, results, result_type):
+
+    row_idx = 0
+    decimal_style = xlwt.XFStyle()
+    decimal_style.num_format_str = '0.00'
+    perc_style = xlwt.XFStyle()
+    perc_style.num_format_str = '0.00%'
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
+    sheet_name = str()
+    aux_string = str()
+    if result_type == 'losses':
+        sheet_name = 'Branch Losses'
+        aux_string = 'P, [MW]'
+    elif result_type == 'ratio':
+        sheet_name = 'Transformer Ratio'
+        aux_string = 'Ratio'
+    elif result_type == 'current_perc':
+        sheet_name = 'Current'
+        aux_string = 'I, [%]'
+
+    sheet = workbook.add_sheet(sheet_name)
+
+    # Write Header
+    sheet.write(row_idx, 0, 'From Node ID')
+    sheet.write(row_idx, 1, 'To Node ID')
+    sheet.write(row_idx, 2, 'Year')
+    sheet.write(row_idx, 3, 'Day')
+    sheet.write(row_idx, 4, 'Quantity')
+    sheet.write(row_idx, 5, 'Market Scenario')
+    sheet.write(row_idx, 6, 'Operation Scenario')
+    for p in range(network_planning.num_instants):
+        sheet.write(0, p + 7, p + 0)
+    row_idx = row_idx + 1
+
+    for year in results:
+        for day in results[year]:
+
+            network = network_planning.network[year][day]
+
+            expected_values = dict()
+            for k in range(len(network.branches)):
+                expected_values[k] = [0.0 for _ in range(network.num_instants)]
+
+            for s_m in results[year][day]:
+                if s_m not in exclusions:
+                    omega_m = network.prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network.prob_operation_scenarios[s_o]
+                        for k in results[year][day][s_m][s_o]['branches'][result_type]:
+                            branch = network.branches[k]
+                            if not(result_type == 'ratio' and not branch.is_transformer):
+
+                                sheet.write(row_idx, 0, branch.fbus)
+                                sheet.write(row_idx, 1, branch.tbus)
+                                sheet.write(row_idx, 2, int(year))
+                                sheet.write(row_idx, 3, day)
+                                sheet.write(row_idx, 4, aux_string)
+                                sheet.write(row_idx, 5, s_m)
+                                sheet.write(row_idx, 6, s_o)
+                                for p in range(network.num_instants):
+                                    value = results[year][day][s_m][s_o]['branches'][result_type][k][p]
+                                    if result_type == 'current_perc':
+                                        sheet.write(row_idx, p + 7, value, perc_style)
+                                    else:
+                                        sheet.write(row_idx, p + 7, value, decimal_style)
+                                    expected_values[k][p] += value * omega_m * omega_s
+                                row_idx = row_idx + 1
+
+            for k in range(len(network.branches)):
+                branch = network.branches[k]
+                if not (result_type == 'ratio' and not branch.is_transformer):
+
+                    sheet.write(row_idx, 0, branch.fbus)
+                    sheet.write(row_idx, 1, branch.tbus)
+                    sheet.write(row_idx, 2, int(year))
+                    sheet.write(row_idx, 3, day)
+                    sheet.write(row_idx, 4, aux_string)
+                    sheet.write(row_idx, 5, 'Expected')
+                    sheet.write(row_idx, 6, '-')
+                    for p in range(network.num_instants):
+                        if result_type == 'current_perc':
+                            sheet.write(row_idx, p + 7, expected_values[k][p], perc_style)
+                        else:
+                            sheet.write(row_idx, p + 7, expected_values[k][p], decimal_style)
+                    row_idx = row_idx + 1
 
 
 # ======================================================================================================================
