@@ -754,16 +754,16 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                     row_idx = row_idx + 1
 
                 # Reactive Power
-                sheet.write(row_idx, 2, node_id)
-                sheet.write(row_idx, 3, gen_id)
-                sheet.write(row_idx, 4, gen_type)
-                sheet.write(row_idx, 5, int(year))
-                sheet.write(row_idx, 6, day)
-                sheet.write(row_idx, 7, 'Qg, [MVAr]')
-                sheet.write(row_idx, 8, 'Expected')
-                sheet.write(row_idx, 9, '-')
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, gen_id)
+                sheet.write(row_idx, 2, gen_type)
+                sheet.write(row_idx, 3, int(year))
+                sheet.write(row_idx, 4, day)
+                sheet.write(row_idx, 5, 'Qg, [MVAr]')
+                sheet.write(row_idx, 6, 'Expected')
+                sheet.write(row_idx, 7, '-')
                 for p in range(network.num_instants):
-                    sheet.write(row_idx, p + 10, expected_qg[gen_id][p], decimal_style)
+                    sheet.write(row_idx, p + 8, expected_qg[gen_id][p], decimal_style)
                 row_idx = row_idx + 1
 
 
