@@ -1,7 +1,5 @@
 import os
 import xlwt
-import pyomo.opt as po
-import pyomo.environ as pe
 from definitions import *
 from network import Network, run_smopf
 from network_parameters import NetworkParameters
@@ -160,14 +158,15 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
     _write_main_info_to_excel(network_planning, wb, processed_results)
     if network_planning.params.obj_type == OBJ_MIN_COST:
         _write_market_cost_values_to_excel(network_planning, wb)
-    _write_network_results_to_excel(network_planning, wb, processed_results['results'], RESULTS_VOLTAGE)
-    _write_network_results_to_excel(network_planning, wb, processed_results['results'], RESULTS_CONSUMPTION)
-    _write_network_results_to_excel(network_planning, wb, processed_results['results'], RESULTS_GENERATION)
-    _write_network_results_to_excel(network_planning, wb, processed_results['results'], RESULTS_LINE_FLOW)
-    if network_planning.params.transf_reg:
-        _write_network_results_to_excel(network_planning, wb, processed_results['results'], RESULTS_TRANSFORMERS)
-    if network_planning.params.es_reg:
-        _write_network_results_to_excel(network_planning, wb, processed_results['results'], RESULTS_ENERGY_STORAGE)
+    _write_network_voltage_results_to_excel(network_planning, wb, processed_results['results'])
+    '''
+    _write_network_consumption_results_to_excel(network_planning, wb, processed_results['results'])
+    _write_network_generation_results_to_excel(network_planning, wb, processed_results['results'])
+    _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'losses')
+    _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'ratio')
+    _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'current_perc')
+    _write_network_branch_power_flow_results_to_excel(network_planning, wb, processed_results['results'])
+    '''
 
     results_filename = os.path.join(data_dir, f'{network_planning.name}_results.xls')
     try:
@@ -296,665 +295,97 @@ def _write_market_cost_values_to_excel(network_planning, workbook):
                     sheet.write(line_idx, p + 5, network.cost_energy_q[s_o][p], decimal_style)
 
 
-def _write_network_results_to_excel(network_planning, workbook, results, res_type):
+def _write_network_voltage_results_to_excel(network_planning, workbook, results):
 
     row_idx = 0
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
-    perc_style = xlwt.XFStyle()
-    perc_style.num_format_str = '0.00%'
-    num_instants = network_planning.num_instants
 
-    if res_type == RESULTS_VOLTAGE:
-        sheet = workbook.add_sheet('Voltage')
-    elif res_type == RESULTS_CONSUMPTION:
-        sheet = workbook.add_sheet('Consumption')
-    elif res_type == RESULTS_GENERATION:
-        sheet = workbook.add_sheet('Generation')
-    elif res_type == RESULTS_LINE_FLOW:
-        sheet = workbook.add_sheet('Line Flows')
-    elif res_type == RESULTS_LOSSES:
-        sheet = workbook.add_sheet('Losses')
-    elif res_type == RESULTS_ENERGY_STORAGE:
-        sheet = workbook.add_sheet('Energy Storage')
-    elif res_type == RESULTS_TRANSFORMERS:
-        sheet = workbook.add_sheet('Transformers')
-    else:
-        print('[ERROR] Writing network results. Unrecognized result type!')
-        return
+    sheet = workbook.add_sheet('Voltage')
 
-    # Write results
-    if res_type == RESULTS_VOLTAGE:
+    # Write Header
+    sheet.write(row_idx, 0, 'Network Node ID')
+    sheet.write(row_idx, 1, 'Year')
+    sheet.write(row_idx, 2, 'Day')
+    sheet.write(row_idx, 3, 'Quantity')
+    sheet.write(row_idx, 4, 'Market Scenario')
+    sheet.write(row_idx, 5, 'Operation Scenario')
+    for p in range(network_planning.num_instants):
+        sheet.write(0, p + 6, p + 0)
+    row_idx = row_idx + 1
 
-        # Write Header
-        sheet.write(row_idx, 0, 'Node ID')
-        sheet.write(row_idx, 1, 'Year')
-        sheet.write(row_idx, 2, 'Day')
-        sheet.write(row_idx, 3, 'Quantity')
-        sheet.write(row_idx, 4, 'Market Scenario')
-        sheet.write(row_idx, 5, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 6, p + 0)
-        row_idx = row_idx + 1
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for node in network.nodes:
+    for year in results:
+        for day in results[year]:
 
-                    node_id = node.bus_i
-                    vmag_expected = [0.0] * num_instants
-                    vang_expected = [0.0] * num_instants
+            network = network_planning.network[year][day]
 
-                    for s_m in range(len(network.prob_market_scenarios)):
+            expected_vmag = dict()
+            expected_vang = dict()
 
-                        omega_m = network.prob_market_scenarios[s_m]
+            for node in network.nodes:
+                expected_vmag[node.bus_i] = [0.0 for _ in range(network.num_instants)]
+                expected_vang[node.bus_i] = [0.0 for _ in range(network.num_instants)]
 
-                        for s_o in range(len(network.prob_operation_scenarios)):
+            for s_m in results[year][day]:
+                if s_m not in exclusions:
+                    omega_m = network.prob_market_scenarios[s_m]
+                    for s_o in results[year][day][s_m]:
+                        omega_s = network.prob_operation_scenarios[s_o]
+                        for node_id in results[year][day][s_m][s_o]['voltage']['vmag']:
 
-                            omega_o = network.prob_operation_scenarios[s_o]
-
-                            v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id]
+                            # Voltage magnitude
                             sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
+                            sheet.write(row_idx, 1, int(year))
                             sheet.write(row_idx, 2, day)
                             sheet.write(row_idx, 3, 'Vmag, [p.u.]')
                             sheet.write(row_idx, 4, s_m)
                             sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                sheet.write(row_idx, p + 6, v_mag[p], decimal_style)
-                                vmag_expected[p] += v_mag[p] * omega_m * omega_o
+                            for p in range(network.num_instants):
+                                v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id][p]
+                                sheet.write(row_idx, p + 6, v_mag, decimal_style)
+                                expected_vmag[node_id][p] += v_mag * omega_m * omega_s
                             row_idx = row_idx + 1
 
-                            v_ang = results[year][day][s_m][s_o]['voltage']['vang'][node_id]
+                            # Voltage angle
                             sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
+                            sheet.write(row_idx, 1, int(year))
                             sheet.write(row_idx, 2, day)
                             sheet.write(row_idx, 3, 'Vang, [º]')
                             sheet.write(row_idx, 4, s_m)
                             sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                sheet.write(row_idx, p + 6, v_ang[p], decimal_style)
-                                vang_expected[p] += v_ang[p] * omega_m * omega_o
+                            for p in range(network.num_instants):
+                                v_ang = results[year][day][s_m][s_o]['voltage']['vang'][node_id][p]
+                                sheet.write(row_idx, p + 6, v_ang, decimal_style)
+                                expected_vang[node_id][p] += v_mag * omega_m * omega_s
                             row_idx = row_idx + 1
 
-                    # - Expected
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'Vmag, [p.u.]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, vmag_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'Vang, [º]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, vang_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-    elif res_type == RESULTS_LINE_FLOW:
-
-        # Write Header
-        sheet.write(row_idx, 0, 'From Node ID')
-        sheet.write(row_idx, 1, 'To Node ID')
-        sheet.write(row_idx, 2, 'Year')
-        sheet.write(row_idx, 3, 'Day')
-        sheet.write(row_idx, 4, 'Quantity')
-        sheet.write(row_idx, 5, 'Market Scenario')
-        sheet.write(row_idx, 6, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 7, p + 0)
-        row_idx = row_idx + 1
-
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for k in range(len(network.branches)):
-
-                    branch = network.branches[k]
-                    fbus_id = branch.fbus
-                    tbus_id = branch.tbus
-                    v_base = min(network.get_node_base_voltage(branch.fbus), network.get_node_base_voltage(branch.tbus))
-                    rating = branch.rate_a
-                    i_ij_expected = [0.0] * num_instants
-
-                    for s_m in range(len(network.prob_market_scenarios)):
-
-                        omega_m = network.prob_market_scenarios[s_m]
-
-                        for s_o in range(len(network.prob_operation_scenarios)):
-
-                            omega_o = network.prob_operation_scenarios[s_o]
-
-                            res_i_ij = results[year][day][s_m][s_o]['branches']['current'][k]
-                            sheet.write(row_idx, 0, fbus_id)
-                            sheet.write(row_idx, 1, tbus_id)
-                            sheet.write(row_idx, 2, year)
-                            sheet.write(row_idx, 3, day)
-                            sheet.write(row_idx, 4, 'I, [A]')
-                            sheet.write(row_idx, 5, s_m)
-                            sheet.write(row_idx, 6, s_o)
-                            for p in range(num_instants):
-                                i_ij_expected[p] += res_i_ij[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 7, res_i_ij[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                            res_i_ij_perc = ['N/A' for _ in range(num_instants)]
-                            i_ij_perc_expected = ['N/A' for _ in range(num_instants)]
-                            if rating != 0.0:
-                                res_i_ij_perc = [(i_ij * v_base) / rating for i_ij in res_i_ij]
-                                i_ij_perc_expected = [0.0 for _ in range(num_instants)]
-                            sheet.write(row_idx, 0, fbus_id)
-                            sheet.write(row_idx, 1, tbus_id)
-                            sheet.write(row_idx, 2, year)
-                            sheet.write(row_idx, 3, day)
-                            sheet.write(row_idx, 4, 'I, [%]')
-                            sheet.write(row_idx, 5, s_m)
-                            sheet.write(row_idx, 6, s_o)
-                            for p in range(num_instants):
-                                if rating != 0.0:
-                                    i_ij_perc_expected[p] += res_i_ij_perc[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 7, res_i_ij_perc[p], perc_style)
-                            row_idx = row_idx + 1
-
-                    # - Expected
-                    sheet.write(row_idx, 0, fbus_id)
-                    sheet.write(row_idx, 1, tbus_id)
-                    sheet.write(row_idx, 2, year)
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'I, [A]')
-                    sheet.write(row_idx, 5, 'EXPECTED')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 7, i_ij_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, fbus_id)
-                    sheet.write(row_idx, 1, tbus_id)
-                    sheet.write(row_idx, 2, year)
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'I, [%]')
-                    sheet.write(row_idx, 5, 'EXPECTED')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 7, i_ij_perc_expected[p], perc_style)
-                    row_idx = row_idx + 1
-
-    elif res_type == RESULTS_LOSSES:
-
-        # Write Header
-        sheet.write(row_idx, 0, 'From Node ID')
-        sheet.write(row_idx, 1, 'To Node ID')
-        sheet.write(row_idx, 2, 'Year')
-        sheet.write(row_idx, 3, 'Day')
-        sheet.write(row_idx, 4, 'Quantity')
-        sheet.write(row_idx, 5, 'Market Scenario')
-        sheet.write(row_idx, 6, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 7, p + 0)
-        row_idx = row_idx + 1
-
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for k in range(len(network.branches)):
-
-                    fbus_id = network.branches[k].fbus
-                    tbus_id = network.branches[k].tbus
-                    losses_expected = [0.0] * num_instants
-
-                    for s_m in range(len(network.prob_market_scenarios)):
-
-                        omega_m = network.prob_market_scenarios[s_m]
-
-                        for s_o in range(len(network.prob_operation_scenarios)):
-
-                            omega_o = network.prob_market_scenarios[s_m]
-
-                            losses_ij = results[year][day][s_m][s_o]['branches']['losses'][fbus_id][tbus_id]
-                            sheet.write(row_idx, 0, fbus_id)
-                            sheet.write(row_idx, 1, tbus_id)
-                            sheet.write(row_idx, 2, year)
-                            sheet.write(row_idx, 3, day)
-                            sheet.write(row_idx, 4, 'P, [MW]')
-                            sheet.write(row_idx, 5, s_m)
-                            sheet.write(row_idx, 6, s_o)
-                            for p in range(num_instants):
-                                losses_expected[p] += losses_ij[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 7, losses_ij[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                    # - Expected
-                    sheet.write(row_idx, 0, fbus_id)
-                    sheet.write(row_idx, 1, tbus_id)
-                    sheet.write(row_idx, 2, year)
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'P, [MW]')
-                    sheet.write(row_idx, 5, 'EXPECTED')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 7, losses_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-    elif res_type == RESULTS_TRANSFORMERS:
-
-        # Write Header
-        sheet.write(row_idx, 0, 'From Node ID')
-        sheet.write(row_idx, 1, 'To Node ID')
-        sheet.write(row_idx, 2, 'Year')
-        sheet.write(row_idx, 3, 'Day')
-        sheet.write(row_idx, 4, 'Quantity')
-        sheet.write(row_idx, 5, 'Market Scenario')
-        sheet.write(row_idx, 6, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 7, p + 0)
-        row_idx = row_idx + 1
-
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for k in range(len(network.branches)):
-                    if network.branches[k].is_transformer:
-
-                        fbus_id = network.branches[k].fbus
-                        tbus_id = network.branches[k].tbus
-                        ratio_expected = [0.0] * num_instants
-
-                        for s_m in range(len(network.prob_market_scenarios)):
-
-                            omega_m = network.prob_market_scenarios[s_m]
-
-                            for s_o in range(len(network.prob_operation_scenarios)):
-
-                                omega_o = network.prob_operation_scenarios[s_o]
-
-                                ratio_ij = results[year][day][s_m][s_o]['branches']['ratio'][k]
-                                sheet.write(row_idx, 0, fbus_id)
-                                sheet.write(row_idx, 1, tbus_id)
-                                sheet.write(row_idx, 2, year)
-                                sheet.write(row_idx, 3, day)
-                                sheet.write(row_idx, 4, 'Ratio')
-                                sheet.write(row_idx, 5, s_m)
-                                sheet.write(row_idx, 6, s_o)
-                                for p in range(num_instants):
-                                    ratio_expected[p] += ratio_ij[p] * omega_m * omega_o
-                                    sheet.write(row_idx, p + 7, ratio_ij[p], decimal_style)
-                                row_idx = row_idx + 1
-
-                        # - Expected
-                        sheet.write(row_idx, 0, fbus_id)
-                        sheet.write(row_idx, 1, tbus_id)
-                        sheet.write(row_idx, 2, year)
-                        sheet.write(row_idx, 3, day)
-                        sheet.write(row_idx, 4, 'Ratio')
-                        sheet.write(row_idx, 5, 'EXPECTED')
-                        sheet.write(row_idx, 6, '-')
-                        for p in range(num_instants):
-                            sheet.write(row_idx, p + 7, ratio_expected[p], decimal_style)
-                        row_idx = row_idx + 1
-
-    elif res_type == RESULTS_CONSUMPTION:
-
-        # Write Header
-        sheet.write(row_idx, 0, 'Node ID')
-        sheet.write(row_idx, 2, 'Year')
-        sheet.write(row_idx, 3, 'Day')
-        sheet.write(row_idx, 1, 'Quantity')
-        sheet.write(row_idx, 4, 'Market Scenario')
-        sheet.write(row_idx, 5, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 6, p + 0)
-        row_idx = row_idx + 1
-
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for node in network.nodes:
-
-                    node_id = node.bus_i
-                    pc_expected = [0.0] * num_instants
-                    qc_expected = [0.0] * num_instants
-                    if network_planning.params.fl_reg:
-                        flex_up_expected = [0.0] * num_instants
-                        flex_down_expected = [0.0] * num_instants
-
-                    for s_m in range(len(network.prob_market_scenarios)):
-
-                        omega_m = network.prob_market_scenarios[s_m]
-
-                        for s_o in range(len(network.prob_operation_scenarios)):
-
-                            omega_o = network.prob_operation_scenarios[s_o]
-
-                            pc = results[year][day][s_m][s_o]['consumption']['pc'][node_id]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, 'Pc, [MW]')
-                            sheet.write(row_idx, 4, s_m)
-                            sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                pc_expected[p] += pc[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 6, pc[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                            if network_planning.params.fl_reg:
-                                flex_up = results[year][day][s_m][s_o]['consumption']['p_up'][node_id]
-                                sheet.write(row_idx, 0, node_id)
-                                sheet.write(row_idx, 1, year)
-                                sheet.write(row_idx, 2, day)
-                                sheet.write(row_idx, 3, 'Flex_Up, [MW]')
-                                sheet.write(row_idx, 4, s_m)
-                                sheet.write(row_idx, 5, s_o)
-                                for p in range(num_instants):
-                                    flex_up_expected[p] += flex_up[p] * omega_m * omega_o
-                                    sheet.write(row_idx, p + 6, flex_up[p], decimal_style)
-                                row_idx = row_idx + 1
-
-                                flex_down = results[year][day][s_m][s_o]['consumption']['p_down'][node_id]
-                                sheet.write(row_idx, 0, node_id)
-                                sheet.write(row_idx, 1, year)
-                                sheet.write(row_idx, 2, day)
-                                sheet.write(row_idx, 3, 'Flex_Down, [MW]')
-                                sheet.write(row_idx, 4, s_m)
-                                sheet.write(row_idx, 5, s_o)
-                                for p in range(num_instants):
-                                    flex_down_expected[p] += flex_down[p] * omega_m * omega_o
-                                    sheet.write(row_idx, p + 6, flex_down[p], decimal_style)
-                                row_idx = row_idx + 1
-
-                            qc = results[year][day][s_m][s_o]['consumption']['qc'][node_id]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, 'Qc, [MVAr]')
-                            sheet.write(row_idx, 4, s_m)
-                            sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                qc_expected[p] += qc[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 6, qc[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                    # - Expected
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'Pc, [MW]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, pc_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    if network_planning.params.fl_reg:
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, year)
-                        sheet.write(row_idx, 2, day)
-                        sheet.write(row_idx, 3, 'Flex_Up, [MW]')
-                        sheet.write(row_idx, 4, 'EXPECTED')
-                        sheet.write(row_idx, 5, '-')
-                        for p in range(num_instants):
-                            sheet.write(row_idx, p + 6, flex_up_expected[p], decimal_style)
-                        row_idx = row_idx + 1
-
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, year)
-                        sheet.write(row_idx, 2, day)
-                        sheet.write(row_idx, 3, 'Flex_Down, [MW]')
-                        sheet.write(row_idx, 4, 'EXPECTED')
-                        sheet.write(row_idx, 5, '-')
-                        for p in range(num_instants):
-                            sheet.write(row_idx, p + 6, flex_down_expected[p], decimal_style)
-                        row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'Qc, [MVAr]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, qc_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-    elif res_type == RESULTS_GENERATION:
-
-        # Write Header
-        sheet.write(row_idx, 0, 'Node ID')
-        sheet.write(row_idx, 1, 'Year')
-        sheet.write(row_idx, 2, 'Day')
-        sheet.write(row_idx, 3, 'Type')
-        sheet.write(row_idx, 4, 'Quantity')
-        sheet.write(row_idx, 5, 'Market Scenario')
-        sheet.write(row_idx, 6, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 7, p + 0)
-        row_idx = row_idx + 1
-
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for g in range(len(network.generators)):
-
-                    gen = network.generators[g]
-                    node_id = gen.bus
-                    gen_type = network.get_gen_type(gen.gen_id)
-                    pg_expected = [0.0] * num_instants
-                    qg_expected = [0.0] * num_instants
-                    if network_planning.params.rg_curt:
-                        pg_curt_expected = [0.0] * num_instants
-                        pg_net_expected = [0.0] * num_instants
-
-                    for s_m in range(len(network.prob_market_scenarios)):
-
-                        omega_m = network.prob_market_scenarios[s_m]
-
-                        for s_o in range(len(network.prob_operation_scenarios)):
-
-                            omega_o = network.prob_operation_scenarios[s_o]
-
-                            pg = results[year][day][s_m][s_o]['generation']['pg'][g]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, gen_type)
-                            sheet.write(row_idx, 4, 'Pg, [MW]')
-                            sheet.write(row_idx, 5, s_m)
-                            sheet.write(row_idx, 6, s_o)
-                            for p in range(num_instants):
-                                pg_expected[p] += pg[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 7, pg[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                            qg = results[year][day][s_m][s_o]['generation']['qg'][g]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, gen_type)
-                            sheet.write(row_idx, 4, 'Qg, [MVAr]')
-                            sheet.write(row_idx, 5, s_m)
-                            sheet.write(row_idx, 6, s_o)
-                            for p in range(num_instants):
-                                qg_expected[p] += qg[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 7, qg[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                    # - Expected
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, gen_type)
-                    sheet.write(row_idx, 4, 'Pg, [MW]')
-                    sheet.write(row_idx, 5, 'EXPECTED')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 7, pg_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    if network_planning.params.rg_curt:
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, year)
-                        sheet.write(row_idx, 2, day)
-                        sheet.write(row_idx, 3, gen_type)
-                        sheet.write(row_idx, 4, 'Pg_curt, [MW]')
-                        sheet.write(row_idx, 5, 'EXPECTED')
-                        sheet.write(row_idx, 6, '-')
-                        for p in range(num_instants):
-                            sheet.write(row_idx, p + 7, pg_curt_expected[p], decimal_style)
-                        row_idx = row_idx + 1
-
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, year)
-                        sheet.write(row_idx, 2, day)
-                        sheet.write(row_idx, 3, gen_type)
-                        sheet.write(row_idx, 4, 'Pg_net, [MW]')
-                        sheet.write(row_idx, 5, 'EXPECTED')
-                        sheet.write(row_idx, 6, '-')
-                        for p in range(num_instants):
-                            sheet.write(row_idx, p + 7, pg_net_expected[p], decimal_style)
-                        row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, gen_type)
-                    sheet.write(row_idx, 4, 'Qg, [MVAr]')
-                    sheet.write(row_idx, 5, 'EXPECTED')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 7, qg_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-    elif res_type == RESULTS_ENERGY_STORAGE:
-
-        # Write Header
-        sheet.write(row_idx, 0, 'Node ID')
-        sheet.write(row_idx, 1, 'Year')
-        sheet.write(row_idx, 2, 'Day')
-        sheet.write(row_idx, 3, 'Quantity')
-        sheet.write(row_idx, 4, 'Market Scenario')
-        sheet.write(row_idx, 5, 'Operation Scenario')
-        for p in range(num_instants):
-            sheet.write(0, p + 6, p + 0)
-        row_idx = row_idx + 1
-
-        for year in network_planning.years:
-            for day in network_planning.days:
-                network = network_planning.network[year][day]
-                for e in range(len(network.energy_storages)):
-
-                    energy_storage = network.energy_storages[e]
-                    node_id = energy_storage.bus
-                    p_expected = [0.0] * network.num_instants
-                    q_expected = [0.0] * network.num_instants
-                    s_expected = [0.0] * network.num_instants
-                    soc_expected = [0.0] * network.num_instants
-                    soc_perc_expected = [0.0] * network.num_instants
-
-                    for s_m in range(len(network.prob_market_scenarios)):
-
-                        omega_m = network.prob_market_scenarios[s_m]
-
-                        for s_o in range(len(network.prob_operation_scenarios)):
-
-                            omega_o = network.prob_operation_scenarios[s_o]
-
-                            # - Active power
-                            pnet = results[year][day][s_m][s_o]['energy_storages']['p'][node_id]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, 'P, [MW]')
-                            sheet.write(row_idx, 4, s_m)
-                            sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                p_expected[p] += pnet[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 6, pnet[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                            # - State-of-Charge, MVAh
-                            soc = results[year][day][s_m][s_o]['energy_storages']['soc'][node_id]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, 'SoC, [MVAh]')
-                            sheet.write(row_idx, 4, s_m)
-                            sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                soc_expected[p] += soc[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 6, soc[p], decimal_style)
-                            row_idx = row_idx + 1
-
-                            # - State-of-Charge, %
-                            soc_perc = results[year][day][s_m][s_o]['energy_storages']['soc_percent'][node_id]
-                            sheet.write(row_idx, 0, node_id)
-                            sheet.write(row_idx, 1, year)
-                            sheet.write(row_idx, 2, day)
-                            sheet.write(row_idx, 3, 'SoC, [%]')
-                            sheet.write(row_idx, 4, s_m)
-                            sheet.write(row_idx, 5, s_o)
-                            for p in range(num_instants):
-                                soc_perc_expected[p] += soc_perc[p] * omega_m * omega_o
-                                sheet.write(row_idx, p + 6, soc_perc[p], perc_style)
-                            row_idx = row_idx + 1
-
-                    # - Expected
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'P, [MW]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, p_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'Q, [MVAr]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, q_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'S, [MVA]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, s_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'SoC, [MVAh]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, soc_expected[p], decimal_style)
-                    row_idx = row_idx + 1
-
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, year)
-                    sheet.write(row_idx, 2, day)
-                    sheet.write(row_idx, 3, 'SoC, [%]')
-                    sheet.write(row_idx, 4, 'EXPECTED')
-                    sheet.write(row_idx, 5, '-')
-                    for p in range(num_instants):
-                        sheet.write(row_idx, p + 6, soc_perc_expected[p], perc_style)
-                    row_idx = row_idx + 1
+            for node in network.nodes:
+
+                node_id = node.bus_i
+
+                # Expected voltage magnitude
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'Vmag, [p.u.]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(network.num_instants):
+                    sheet.write(row_idx, p + 6, expected_vmag[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+
+                # Expected voltage angle
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, int(year))
+                sheet.write(row_idx, 2, day)
+                sheet.write(row_idx, 3, 'Vang, [º]')
+                sheet.write(row_idx, 4, 'Expected')
+                sheet.write(row_idx, 5, '-')
+                for p in range(network.num_instants):
+                    sheet.write(row_idx, p + 8, expected_vang[node_id][p], decimal_style)
+                row_idx = row_idx + 1
 
 
 # ======================================================================================================================
