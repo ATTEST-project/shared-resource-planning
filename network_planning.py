@@ -283,14 +283,6 @@ def _write_market_cost_values_to_excel(network_planning, workbook):
                 sheet.write(line_idx, 4, network.prob_market_scenarios[s_o], perc_style)
                 for p in range(network.num_instants):
                     sheet.write(line_idx, p + 5, network.cost_energy_p[s_o][p], decimal_style)
-                line_idx += 1
-                sheet.write(line_idx, 0, 'Reactive power, [€/MVAr]')
-                sheet.write(line_idx, 1, year)
-                sheet.write(line_idx, 2, day)
-                sheet.write(line_idx, 3, s_o)
-                sheet.write(line_idx, 4, network.prob_market_scenarios[s_o], perc_style)
-                for p in range(network.num_instants):
-                    sheet.write(line_idx, p + 5, network.cost_energy_q[s_o][p], decimal_style)
 
 
 def _write_network_voltage_results_to_excel(network_planning, workbook, results):
