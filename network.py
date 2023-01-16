@@ -1847,11 +1847,16 @@ def _process_results(network, model, params, results=dict()):
                     processed_results[s_m][s_o]['energy_storages']['soc'][node_id] = []
                     processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id] = []
                     for p in model.periods:
-                        p_ess = pe.value(model.es_pch[e, s_m, s_o, p] - model.es_pdch[e, s_m, s_o, p]) * network.baseMVA
-                        soc_ess = pe.value(model.es_soc[e, s_m, s_o, p]) * network.baseMVA
-                        processed_results[s_m][s_o]['energy_storages']['p'][node_id].append(p_ess)
-                        processed_results[s_m][s_o]['energy_storages']['soc'][node_id].append(soc_ess)
-                        processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id].append(soc_ess / capacity)
+                        if capacity > 0:
+                            p_ess = pe.value(model.es_pch[e, s_m, s_o, p] - model.es_pdch[e, s_m, s_o, p]) * network.baseMVA
+                            soc_ess = pe.value(model.es_soc[e, s_m, s_o, p]) * network.baseMVA
+                            processed_results[s_m][s_o]['energy_storages']['p'][node_id].append(p_ess)
+                            processed_results[s_m][s_o]['energy_storages']['soc'][node_id].append(soc_ess)
+                            processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id].append(soc_ess / capacity)
+                        else:
+                            processed_results[s_m][s_o]['energy_storages']['p'][node_id].append('N/A')
+                            processed_results[s_m][s_o]['energy_storages']['soc'][node_id].append('N/A')
+                            processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id].append('N/A')
 
             # Flexible loads
             if params.fl_reg:
