@@ -56,11 +56,11 @@ mpc.branch = [
 25	10	0.010204082	0.008979592	0.001188249	25	25	25	0	0	1	-360	360	0	0	0	0	0	3;
 25	29	0.020653061	0.028571429	4.04267E-05	21	21	21	0	0	1	-360	360	0	0	0	0	0	14.34;
 27	21	0.007102041	0.009469388	0.00084623	35	35	35	0	0	1	-360	360	0	0	0	0	0	4.1;
-9	10	0.0095	0.275	0	40	40	40	1.038095238	0	1	-360	360	0.015	5	1	21	11	1;
+9	10	0.0095	0.275	0	40	40	40	1.038095238	0	0	-360	360	0.015	5	1	21	11	1;
 9	10	0.0095	0.275	0	40	40	40	1.038095238	0	1	-360	360	0.015	5	1	21	11	1;
 13	14	0.17825	1.5	0	4	4	4	0.976190476	0	1	-360	360	0.025	2	1	5	3	1;
 13	14	0.17825	1.5	0	4	4	4	0.976190476	0	1	-360	360	0.025	2	1	5	3	1;
-16	17	0.17825	1.5	0	4	4	4	0.976190476	0	1	-360	360	0.025	2	1	5	3	1;
+16	17	0.17825	1.5	0	4	4	4	0.976190476	0	0	-360	360	0.025	2	1	5	3	1;
 16	17	0.17825	1.5	0	4	4	4	0.976190476	0	1	-360	360	0.025	2	1	5	3	1;
 19	20	0.17825	1.5	0	4	4	4	0.976190476	0	0	-360	360	0.025	2	1	5	3	1;
 19	20	0.17825	1.5	0	4	4	4	0.952380952	0	1	-360	360	0.025	3	1	5	3	1;
@@ -80,25 +80,46 @@ mpc.branch = [
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	
 mpc.gen = [																						
 	9	0	0	80	-80     1.05	100	1	80	-80	0	0	0	0	0	0	0	0	0	0	0;
-];																						
+	22	0.00	0.00	4.66	-4.66	1.00	100	1	4.66	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	17	0.00	0.00	1.87	-1.87	1.00	100	1	1.87	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	26	0.00	0.00	6.43	-6.43	1.00	100	1	6.43	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	24	0.00	0.00	8.16	-8.16	1.00	100	1	8.16	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	28	0.00	0.00	4.43	-4.43	1.00	100	1	4.43	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	30	0.00	0.00	1.94	-1.94	1.00	100	1	1.94	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	14	0.00	0.00	1.40	-1.40	1.00	100	1	1.40	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	20	0.00	0.00	0.57	-0.57	1.00	100	1	0.57	0.00	0	0	0	0	0	0	0	0	0	0	0;
+];
 
 % Generation Technology Type:
-%  CWS (Connection with Spain),
-%  FOG (Fossil Gas),
-%  FHC (Fossil Hard Coal),
-%  HWR (Hydro Water Reservoir),
-%  HPS (Hydro Pumped Storage),
-%  HRP (Hydro Run-of-river and poundage),
-%  SH1 (Small Hydro - P ≤ 10 MW),
-%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW),
-%  PVP (Photovoltaic power plant),
-%  WON (Wind onshore),
-%  WOF (Wind offshore),
-%  MAR (Marine),
-%  OTH (Other thermal, such as geothermal, biomass, biogas, Municipal solid waste and CHP renewable and non-renewable)
+%  CWS (Connection with Spain).
+%  FOG (Fossil Gas).
+%  FHC (Fossil Hard Coal).
+%  HWR (Hydro Water Reservoir).
+%  HPS (Hydro Pumped Storage).
+%  HRP (Hydro Run-of-river and poundage).
+%  SH1 (Small Hydro - P ≤ 10 MW).
+%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW).
+%  PVP (Photovoltaic power plant).
+%  WON (Wind onshore).
+%  WOF (Wind offshore).
+%  MAR (Marine).
+%  OTH (Other thermal. such as geothermal. biomass. biogas. Municipal solid waste and CHP renewable and non-renewable)
 %  REF (Reference node -- for DNs)
 %	genType
 mpc.gen_tags = {
-	'REF';
+	'REF';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';
 };
+
+%% energy storage
+%	Bus	S. [MW]	E. [MWh]	Einit. [MWh]	EffCh	EffDch	MaxPF	MinPF
+mpc.energy_storage = [
+22	2.33	2.33	1.17	0.90	0.90	0.80	-0.80;
+17	0.93	0.93	0.47	0.90	0.90	0.80	-0.80;
+26	3.21	3.21	1.61	0.90	0.90	0.80	-0.80;
+24	4.08	4.08	2.04	0.90	0.90	0.80	-0.80;
+28	2.22	2.22	1.11	0.90	0.90	0.80	-0.80;
+30	0.97	0.97	0.48	0.90	0.90	0.80	-0.80;
+14	0.70	0.70	0.35	0.90	0.90	0.80	-0.80;
+20	0.29	0.29	0.14	0.90	0.90	0.80	-0.80;
+];
 

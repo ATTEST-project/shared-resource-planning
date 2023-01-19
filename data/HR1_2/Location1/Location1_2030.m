@@ -1,8 +1,8 @@
 function mpc = Location1
 %LOCATION1
-%   PSS(R)E-33.9    WED, MAR 03 2021  10:07
+%   PSS(R)E-33.9    WED. MAR 03 2021  10:07
 %   CREATED BY NETVISION RAW CONVERTER FROM FILES: NDC_2020-07-0
-%   , BEGIN BUS DATA
+%   . BEGIN BUS DATA
 %
 %   Converted by MATPOWER 7.1 using PSSE2MPC on 04-May-2022
 %   from 'Loaction1.raw' using PSS/E rev 33 format.
@@ -73,7 +73,51 @@ mpc.gen = [
 	34	37.202	0.049	21	-12.6	1.04461	42	1	40	15	0	0	0	0	0	0	0	0	0	0	0;
 	36	0	0	20	-8.4	1.04442	42	0	40	0.01	0	0	0	0	0	0	0	0	0	0	0;
 	36	38.287	3.142	20	-8.4	1.04442	42	1	40	0.01	0	0	0	0	0	0	0	0	0	0	0;
+	1	0.00	0.00	2.03	-2.03	1.00	100	1	2.03	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	2	0.00	0.00	8.68	-8.68	1.00	100	1	8.68	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	3	0.00	0.00	12.36	-12.36	1.00	100	1	12.36	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	4	0.00	0.00	18.00	-18.00	1.00	100	1	18.00	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	5	0.00	0.00	4.25	-4.25	1.00	100	1	4.25	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	8	0.00	0.00	0.00	0.00	1.00	100	1	0.00	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	9	0.00	0.00	23.60	-23.60	1.00	100	1	23.60	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	10	0.00	0.00	10.99	-10.99	1.00	100	1	10.99	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	12	0.00	0.00	63.36	-63.36	1.00	100	1	63.36	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	15	0.00	0.00	2.38	-2.38	1.00	100	1	2.38	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	16	0.00	0.00	11.63	-11.63	1.00	100	1	11.63	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	17	0.00	0.00	3.14	-3.14	1.00	100	1	3.14	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	18	0.00	0.00	0.22	-0.22	1.00	100	1	0.22	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	20	0.00	0.00	1.93	-1.93	1.00	100	1	1.93	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	21	0.00	0.00	3.26	-3.26	1.00	100	1	3.26	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	26	0.00	0.00	10.14	-10.14	1.00	100	1	10.14	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	30	0.00	0.00	5.45	-5.45	1.00	100	1	5.45	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	35	0.00	0.00	5.13	-5.13	1.00	100	1	5.13	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	36	0.00	0.00	0.16	-0.16	1.00	100	1	0.16	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	42	0.00	0.00	8.08	-8.08	1.00	100	1	8.08	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	55	0.00	0.00	2.47	-2.47	1.00	100	1	2.47	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	68	0.00	0.00	2.22	-2.22	1.00	100	1	2.22	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	72	0.00	0.00	22.62	-22.62	1.00	100	1	22.62	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	103	0.00	0.00	22.91	-22.91	1.00	100	1	22.91	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];
+
+% Generation Technology Type:
+%  CWS (Connection with Spain).
+%  FOG (Fossil Gas).
+%  FHC (Fossil Hard Coal).
+%  HWR (Hydro Water Reservoir).
+%  HPS (Hydro Pumped Storage).
+%  HRP (Hydro Run-of-river and poundage).
+%  SH1 (Small Hydro - P ≤ 10 MW).
+%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW).
+%  PVP (Photovoltaic power plant).
+%  WON (Wind onshore).
+%  WOF (Wind offshore).
+%  MAR (Marine).
+%  OTH (Other thermal. such as geothermal. biomass. biogas. Municipal solid waste and CHP renewable and non-renewable)
+%  REF (Reference node -- for DNs)
+%	genType
+mpc.gen_tags = {
+	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';	'PVP';
+};
 
 %% branch data
 %	fbus	tbus	r	x	b	rateA	rateB	rateC	ratio	angle	status	angmin	angmax
@@ -128,22 +172,31 @@ mpc.branch = [
 	29	30	0.0256818	0.531198	0	22	26.4	26.4	1.03030303	0	1	-360	360;
 ];
 
-% Generation Technology Type:
-%  CWS (Connection with Spain),
-%  FOG (Fossil Gas),
-%  FHC (Fossil Hard Coal),
-%  HWR (Hydro Water Reservoir),
-%  HPS (Hydro Pumped Storage),
-%  HRP (Hydro Run-of-river and poundage),
-%  SH1 (Small Hydro - P ≤ 10 MW),
-%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW),
-%  PVP (Photovoltaic power plant),
-%  WON (Wind onshore),
-%  WOF (Wind offshore),
-%  MAR (Marine),
-%  OTH (Other thermal, such as geothermal, biomass, biogas, Municipal solid waste and CHP renewable and non-renewable)
-%  REF (Reference node -- for DNs)
-%	genType
-mpc.gen_tags = {
-	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';
-};
+%% energy storage
+%	Bus	S. [MW]	E. [MWh]	Einit. [MWh]	EffCh	EffDch	MaxPF	MinPF
+mpc.energy_storage = [
+	1	0.22	0.22	0.11	0.90	0.90	0.80	-0.80;
+	2	0.93	0.93	0.47	0.90	0.90	0.80	-0.80;
+	3	1.32	1.32	0.66	0.90	0.90	0.80	-0.80;
+	4	1.93	1.93	0.96	0.90	0.90	0.80	-0.80;
+	5	0.45	0.45	0.23	0.90	0.90	0.80	-0.80;
+	8	0.00	0.00	0.00	0.90	0.90	0.80	-0.80;
+	9	2.53	2.53	1.26	0.90	0.90	0.80	-0.80;
+	10	1.18	1.18	0.59	0.90	0.90	0.80	-0.80;
+	12	6.79	6.79	3.39	0.90	0.90	0.80	-0.80;
+	15	0.25	0.25	0.13	0.90	0.90	0.80	-0.80;
+	16	1.25	1.25	0.62	0.90	0.90	0.80	-0.80;
+	17	0.34	0.34	0.17	0.90	0.90	0.80	-0.80;
+	18	0.02	0.02	0.01	0.90	0.90	0.80	-0.80;
+	20	0.21	0.21	0.10	0.90	0.90	0.80	-0.80;
+	21	0.35	0.35	0.17	0.90	0.90	0.80	-0.80;
+	26	1.09	1.09	0.54	0.90	0.90	0.80	-0.80;
+	30	0.58	0.58	0.29	0.90	0.90	0.80	-0.80;
+	35	0.55	0.55	0.27	0.90	0.90	0.80	-0.80;
+	36	0.02	0.02	0.01	0.90	0.90	0.80	-0.80;
+	42	0.87	0.87	0.43	0.90	0.90	0.80	-0.80;
+	55	0.26	0.26	0.13	0.90	0.90	0.80	-0.80;
+	68	0.24	0.24	0.12	0.90	0.90	0.80	-0.80;
+	72	2.42	2.42	1.21	0.90	0.90	0.80	-0.80;
+	103	2.45	2.45	1.23	0.90	0.90	0.80	-0.80;
+];

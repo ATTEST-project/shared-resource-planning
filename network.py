@@ -431,6 +431,8 @@ def _build_model(network, params):
         model.es_soc = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
         model.es_pch = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
         model.es_pdch = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
+        if params.ess_relax:
+            model.es_w = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
         for e in model.energy_storages:
             energy_storage = network.energy_storages[e]
             for s_m in model.scenarios_market:
@@ -448,6 +450,8 @@ def _build_model(network, params):
     model.shared_es_soc = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     model.shared_es_pch = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     model.shared_es_pdch = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
+    if params.ess_relax:
+        model.shared_es_w = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     for e in model.shared_energy_storages:
         model.shared_es_s_rated[e].fix(0.00)
         model.shared_es_e_rated[e].fix(0.00)
@@ -564,7 +568,11 @@ def _build_model(network, params):
 
                         # Charging/discharging exclusivity constraint
                         if params.ess_relax:
-                            model.energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.00)
+                            # McCormick envelopes
+                            #model.energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.00)
+                            model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pch)
+                            model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pdch)
+                            model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] >= energy_storage.s * pch + energy_storage.s * pdch - energy_storage.s**2)
                         else:
                             model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
 
@@ -607,9 +615,15 @@ def _build_model(network, params):
                         model.shared_energy_storage_balance.add(con_balance)
 
                     # Charging/discharging exclusivity constraint
-                    model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.0)
                     model.shared_energy_storage_ch_dch_exclusion.add(pch <= pch_max)
                     model.shared_energy_storage_ch_dch_exclusion.add(pdch <= pdch_max)
+                    if params.ess_relax:
+                        # McCormick envelopes
+                        model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] <= pch_max * pdch)
+                        model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] <= pdch_max * pch)
+                        model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] >= pdch_max * pch + pch_max * pdch - pch_max * pdch_max)
+                    else:
+                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.0)
 
                 con_day_balance = model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
                 model.shared_energy_storage_day_balance.add(con_day_balance)
