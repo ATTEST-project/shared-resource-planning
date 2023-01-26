@@ -1,9 +1,6 @@
 Benders
 benders_tol_abs = 1e3
 benders_tol_rel = 1e-2
-Benders
-benders_tol_abs = 1e3
-benders_tol_rel = 100e-2
 benders_num_max_iters = 1000
 
 ADMM

@@ -866,14 +866,14 @@ def _build_model(network, params):
                         for p in model.periods:
                             slack_e = model.slack_e_up[i, s_m, s_o, p] + model.slack_e_down[i, s_m, s_o, p]
                             slack_f = model.slack_f_up[i, s_m, s_o, p] + model.slack_f_down[i, s_m, s_o, p]
-                            obj_scenario += PENALTY_SLACK_VOLTAGE * (slack_e + slack_f)
+                            obj_scenario += COST_SLACK_VOLTAGE * (slack_e + slack_f)
 
                 # Branch power flow slacks
                 if params.slack_line_limits:
                     for b in model.branches:
                         for p in model.periods:
                             slack_iij_sqr = model.slack_iij_sqr[b, s_m, s_o, p]
-                            obj_scenario += PENALTY_SLACK_BRANCH_FLOW * slack_iij_sqr
+                            obj_scenario += COST_SLACK_BRANCH_FLOW * slack_iij_sqr
 
                 obj += obj_scenario * omega_market * omega_oper
 
@@ -944,9 +944,9 @@ def run_smopf(model, params, from_warm_start=False):
         model.ipopt_zL_in.update(model.ipopt_zL_out)
         model.ipopt_zU_in.update(model.ipopt_zU_out)
         solver.options['warm_start_init_point'] = 'yes'
-        solver.options['warm_start_bound_push'] = params.solver_tol
-        solver.options['warm_start_mult_bound_push'] = params.solver_tol
-        solver.options['mu_init'] = params.solver_tol
+        solver.options['warm_start_bound_push'] = 1e-9
+        solver.options['warm_start_mult_bound_push'] = 1e-9
+        solver.options['mu_init'] = 1e-9
 
     solver.options['tol'] = params.solver_tol
     if params.verbose:
@@ -955,9 +955,9 @@ def run_smopf(model, params, from_warm_start=False):
 
     if params.solver == 'ipopt':
         solver.options['linear_solver'] = params.linear_solver
-        solver.options['max_iter'] = 50000
-        #solver.options['nlp_scaling_method'] = 'none'
-        #solver.options['mu_init '] = 1e-6
+        solver.options['max_iter'] = 10000
+        solver.options['nlp_scaling_method'] = 'none'
+        # solver.options['print_info_string'] = 'yes'
 
     result = solver.solve(model, tee=params.verbose)
 
@@ -1840,7 +1840,7 @@ def _process_results(network, model, params, results=dict()):
                     processed_results[s_m][s_o]['branches']['power_flow']['sji'][k].append(sqrt(sji_sqr))
 
                     # Current
-                    iij_sqr = pe.value(model.iij_sqr[k, s_m, s_o, p])
+                    iij_sqr = abs(pe.value(model.iij_sqr[k, s_m, s_o, p]))
                     processed_results[s_m][s_o]['branches']['current_perc'][k].append(sqrt(iij_sqr) / rating)
 
                     # Losses (active power)

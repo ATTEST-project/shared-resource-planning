@@ -75,6 +75,26 @@ mpc.gen = [
 	36	38.287	3.142	20	-8.4	1.04442	42	1	40	0.01	0	0	0	0	0	0	0	0	0	0	0;
 ];
 
+% Generation Technology Type:
+%  CWS (Connection with Spain),
+%  FOG (Fossil Gas),
+%  FHC (Fossil Hard Coal),
+%  HWR (Hydro Water Reservoir),
+%  HPS (Hydro Pumped Storage),
+%  HRP (Hydro Run-of-river and poundage),
+%  SH1 (Small Hydro - P ≤ 10 MW),
+%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW),
+%  PVP (Photovoltaic power plant),
+%  WON (Wind onshore),
+%  WOF (Wind offshore),
+%  MAR (Marine),
+%  OTH (Other thermal, such as geothermal, biomass, biogas, Municipal solid waste and CHP renewable and non-renewable)
+%  REF (Reference node -- for DNs)
+%	genType
+mpc.gen_tags = {
+	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';
+};
+
 %% branch data
 %	fbus	tbus	r	x	b	rateA	rateB	rateC	ratio	angle	status	angmin	angmax
 mpc.branch = [

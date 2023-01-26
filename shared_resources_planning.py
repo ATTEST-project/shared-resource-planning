@@ -2,6 +2,8 @@ import os
 import time
 import xlwt
 import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
 from math import sqrt, isclose
 import pyomo.opt as po
 import pyomo.environ as pe
@@ -70,6 +72,9 @@ class SharedResourcesPlanning:
         print(f'[INFO] Reading PLANNING PARAMETERS from file {self.params_file} ...')
         filename = os.path.join(self.data_dir, self.params_file)
         self.params.read_parameters_from_file(filename)
+
+    def plot_diagram(self):
+        _plot_networkx_diagram(self)
 
     def write_operational_planning_results_to_excel(self, tso_model, dso_models, esso_model, results, primal_evolution=list()):
         filename = self.filename.replace('.txt', '') + '_operational_planning_results'
@@ -157,8 +162,7 @@ def _run_planning_problem(planning_problem):
 
         # 3. Solve Master problem
         # 3.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
-        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities,
-                                        candidate_solution['investment'])
+        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities, candidate_solution['investment'])
 
         # 3.2. Run master problem optimization
         shared_ess_data.optimize(esso_master_problem_model)
@@ -317,7 +321,8 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
 
     if not convergence:
         print(f'[WARNING] ADMM did NOT converge in {admm_parameters.num_max_iters} iterations!')
-
+    else:
+        print(f'[INFO] \t - ADMM converged in {iter + 1} iterations.')
     return results
 
 
@@ -766,7 +771,7 @@ def update_shared_energy_storages_coordination_model_and_solve(planning_problem,
                     model.p_req_distr[e, y, d, p].fix(ess_req['dso'][node_id][year][day]['p'][p])
 
     # Solve!
-    res = shared_ess_data.optimize(model)
+    res = shared_ess_data.optimize(model, from_warm_start=True)
     if res.solver.status != po.SolverStatus.ok:
         print('[ERROR] Did not converge!')
         exit(ERROR_SHARED_ESS_OPTIMIZATION)
@@ -3121,6 +3126,82 @@ def _write_network_power_flow_results_per_operator(network, sheet, operator_type
                 row_idx = row_idx + 1
 
     return row_idx
+
+
+# ======================================================================================================================
+#   NETWORK diagram functions (plot)
+# ======================================================================================================================
+def _plot_networkx_diagram(planning_problem):
+
+    for year in planning_problem.years:
+        for day in planning_problem.days:
+
+            transmission_network = planning_problem.transmission_network.network[year][day]
+
+            node_labels = {}
+            ref_nodes, pv_nodes, pq_nodes = [], [], []
+            res_pv_nodes = [gen.bus for gen in transmission_network.generators if gen.gen_type == GEN_NONCONVENTIONAL_SOLAR]
+            res_wind_nodes = [gen.bus for gen in transmission_network.generators if gen.gen_type == GEN_NONCONVENTIONAL_WIND]
+            adn_nodes = planning_problem.active_distribution_network_nodes
+
+            branches = []
+            line_list, open_line_list = [], []
+            transf_list, open_transf_list = [], []
+            for branch in transmission_network.branches:
+                if branch.is_transformer:
+                    branches.append({'type': 'transformer', 'data': branch})
+                else:
+                    branches.append({'type': 'line', 'data': branch})
+
+            # Build graph
+            graph = nx.Graph()
+            for i in range(len(transmission_network.nodes)):
+                node = transmission_network.nodes[i]
+                graph.add_node(node.bus_i)
+                node_labels[node.bus_i] = '{}'.format(node.bus_i)
+                if node.type == BUS_REF:
+                    ref_nodes.append(node.bus_i)
+                elif node.type == BUS_PV:
+                    pv_nodes.append(node.bus_i)
+                elif node.type == BUS_PQ:
+                    if node.bus_i not in (res_pv_nodes + res_wind_nodes + adn_nodes):
+                        pq_nodes.append(node.bus_i)
+
+            for i in range(len(branches)):
+                branch = branches[i]
+                if branch['type'] == 'line':
+                    graph.add_edge(branch['data'].fbus, branch['data'].tbus)
+                    if branch['data'].status == 1:
+                        line_list.append((branch['data'].fbus, branch['data'].tbus))
+                    else:
+                        open_line_list.append((branch['data'].fbus, branch['data'].tbus))
+                if branch['type'] == 'transformer':
+                    graph.add_edge(branch['data'].fbus, branch['data'].tbus)
+                    if branch['data'].status == 1:
+                        transf_list.append((branch['data'].fbus, branch['data'].tbus))
+                    else:
+                        open_transf_list.append((branch['data'].fbus, branch['data'].tbus))
+
+            # Plot diagram
+            pos = nx.spring_layout(graph, k=0.10, iterations=1000)
+            fig, ax = plt.subplots(figsize=(12, 8))
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=ref_nodes, node_color='red', node_size=200, label='Reference bus')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=pv_nodes, node_color='lightgreen', node_size=200, label='Conventional generator')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=pq_nodes, node_color='lightblue', node_size=200, label='PQ buses')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=res_pv_nodes, node_color='yellow', node_size=200, label='RES, PV')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=res_wind_nodes, node_color='blue', node_size=200, label='RES, Wind')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=adn_nodes, node_color='orange', node_size=200, label='ADN buses')
+            nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=10)
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=1.0, edge_color='black')
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=1.5, edge_color='blue', label='Transformer')
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=1.0, edge_color='red')
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=1.5, edge_color='red')
+            plt.legend(scatterpoints=1, frameon=False, prop={'size': 12})
+            plt.axis('off')
+
+            filename = os.path.join(planning_problem.diagrams_dir, f'{planning_problem.name}_{year}_{day}')
+            plt.savefig(f'{filename}.pdf', bbox_inches='tight')
+            plt.savefig(f'{filename}.png', bbox_inches='tight')
 
 
 # ======================================================================================================================
