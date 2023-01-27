@@ -2,6 +2,8 @@ import os
 import time
 import xlwt
 import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
 from math import sqrt, isclose
 import pyomo.opt as po
 import pyomo.environ as pe
@@ -31,7 +33,6 @@ class SharedResourcesPlanning:
         self.num_instants = 0
         self.discount_factor = 0.00
         self.cost_energy_p = dict()
-        self.cost_energy_q = dict()
         self.cost_secondary_reserve = dict()
         self.cost_tertiary_reserve_up = dict()
         self.cost_tertiary_reserve_down = dict()
@@ -71,6 +72,9 @@ class SharedResourcesPlanning:
         print(f'[INFO] Reading PLANNING PARAMETERS from file {self.params_file} ...')
         filename = os.path.join(self.data_dir, self.params_file)
         self.params.read_parameters_from_file(filename)
+
+    def plot_diagram(self):
+        _plot_networkx_diagram(self)
 
     def write_operational_planning_results_to_excel(self, tso_model, dso_models, esso_model, results, primal_evolution=list()):
         filename = self.filename.replace('.txt', '') + '_operational_planning_results'
@@ -158,8 +162,7 @@ def _run_planning_problem(planning_problem):
 
         # 3. Solve Master problem
         # 3.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
-        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities,
-                                        candidate_solution['investment'])
+        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities, candidate_solution['investment'])
 
         # 3.2. Run master problem optimization
         shared_ess_data.optimize(esso_master_problem_model)
@@ -251,6 +254,8 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
     convergence, num_iter = False, 1
     for iter in range(admm_parameters.num_max_iters):
 
+        print(f'[INFO]\t - ADMM. Iter {num_iter}...')
+
         iter_start = time.time()
 
         # --------------------------------------------------------------------------------------------------------------
@@ -311,22 +316,13 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
             break
 
         iter_end = time.time()
-        print('Iter {}... {:.2f} s'.format(num_iter, iter_end - iter_start))
+        print('[INFO] \t - Iter {}: {:.2f} s'.format(num_iter, iter_end - iter_start))
         num_iter += 1
-
-    '''
-    if convergence:
-        end = time.time()
-        print('[INFO] Success. ADMM converged in {} iterations!'.format(num_iter))
-        print('[INFO] Elapsed time = {:.2f} s.'.format(end - start))
-        planning_problem.write_operational_planning_results_to_excel(tso_model, dso_models, esso_model, results, primal_evolution=primal_evolution)
-    else:
-        print('[WARNING] ADMM did NOT converge in {} iterations!'.format(admm_parameters.num_max_iters))
-    '''
 
     if not convergence:
         print(f'[WARNING] ADMM did NOT converge in {admm_parameters.num_max_iters} iterations!')
-
+    else:
+        print(f'[INFO] \t - ADMM converged in {iter + 1} iterations.')
     return results
 
 
@@ -643,9 +639,7 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
         for y in model.years:
             year = repr_years[y]
             rating_s = shared_ess_data.shared_energy_storages[year][e].s
-            rating_s = 10.00
-            if rating_s == 0.0:
-                continue
+            rating_s = 1.00
             for d in model.days:
                 for p in model.periods:
                     p_ess = model.es_expected_p[e, y, d, p]
@@ -663,7 +657,7 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
 
 def update_transmission_coordination_model_and_solve(transmission_network, model, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
 
-    print('[INFO] Updating transmission network...')
+    print('[INFO] \t\t - Updating transmission network...')
 
     for year in transmission_network.years:
         for day in transmission_network.days:
@@ -705,7 +699,7 @@ def update_transmission_coordination_model_and_solve(transmission_network, model
 
 def update_distribution_coordination_models_and_solve(distribution_networks, models, interface_vmag, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
 
-    print('[INFO] Updating distribution networks...')
+    print('[INFO] \t\t - Updating distribution networks:')
     res = dict()
 
     for node_id in distribution_networks:
@@ -714,7 +708,7 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
         distribution_network = distribution_networks[node_id]
         rho = params.rho[distribution_network.name]
 
-        #print('\t\t - Updating active distribution network connected to node {}...'.format(node_id))
+        print('[INFO] \t\t\t . Updating active distribution network connected to node {}...'.format(node_id))
 
         for year in distribution_network.years:
             for day in distribution_network.days:
@@ -748,15 +742,14 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
         for year in distribution_network.years:
             for day in distribution_network.days:
                 if res[node_id][year][day].solver.status != po.SolverStatus.ok:
-                    print(f'[ERROR] Network {model[year][day].name} did not converge!')
-                    exit(ERROR_NETWORK_OPTIMIZATION)
-
+                    print(f'[WARNING] Network {model[year][day].name} did not converge!')
+                    #exit(ERROR_NETWORK_OPTIMIZATION)
     return res
 
 
 def update_shared_energy_storages_coordination_model_and_solve(planning_problem, model, ess_req, dual_ess, params):
 
-    print('[INFO] Updating Shared ESS...')
+    print('[INFO] \t\t - Updating Shared ESS...')
     shared_ess_data = planning_problem.shared_ess_data
     days = [day for day in planning_problem.days]
     years = [year for year in planning_problem.years]
@@ -776,7 +769,7 @@ def update_shared_energy_storages_coordination_model_and_solve(planning_problem,
                     model.p_req_distr[e, y, d, p].fix(ess_req['dso'][node_id][year][day]['p'][p])
 
     # Solve!
-    res = shared_ess_data.optimize(model)
+    res = shared_ess_data.optimize(model, from_warm_start=False)
     if res.solver.status != po.SolverStatus.ok:
         print('[ERROR] Did not converge!')
         exit(ERROR_SHARED_ESS_OPTIMIZATION)
@@ -952,8 +945,8 @@ def primal_convergence(planning_problem, consensus_vars, params):
                     num_elems += 2
 
     sum_total = sqrt(sum_sqr)
-    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
-        #print('Convergence primal failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=ADMM_CONVERGENCE_REL_TOL, abs_tol=params.tol):
+        print('[INFO]\t\t - Convergence primal failed. {:.3f} > {:.3f}'.format(sum_total, params.tol * sqrt(num_elems)))
         return False
 
     #print('Convergence primal ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
@@ -993,8 +986,8 @@ def dual_convergence(planning_problem, consensus_vars, params):
                     num_elems += 2
 
     sum_total = sqrt(sum_sqr)
-    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=1.00, abs_tol=params.tol):
-        #print('Convergence dual failed. {} > {}'.format(sum_total, params.tol * sqrt(num_elems)))
+    if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=ADMM_CONVERGENCE_REL_TOL, abs_tol=params.tol):
+        print('[INFO]\t\t - Convergence dual failed. {:.3f} > {:.3f}'.format(sum_total, params.tol * sqrt(num_elems)))
         return False
 
     #print('Convergence dual ok. {} <= {}'.format(sum_total, params.tol * sqrt(num_elems)))
@@ -1088,7 +1081,6 @@ def _read_planning_problem(planning_problem):
                         distribution_network.discount_factor = planning_problem.discount_factor
                         distribution_network.prob_market_scenarios = planning_problem.prob_market_scenarios
                         distribution_network.cost_energy_p = planning_problem.cost_energy_p
-                        distribution_network.cost_energy_q = planning_problem.cost_energy_q
                         distribution_network.params_file = params_file
                         distribution_network.read_network_parameters()
                         distribution_network.read_network_planning_data()
@@ -1120,7 +1112,6 @@ def _read_planning_problem(planning_problem):
                     transmission_network.discount_factor = planning_problem.discount_factor
                     transmission_network.prob_market_scenarios = planning_problem.prob_market_scenarios
                     transmission_network.cost_energy_p = planning_problem.cost_energy_p
-                    transmission_network.cost_energy_q = planning_problem.cost_energy_q
                     transmission_network.params_file = params_file
                     transmission_network.read_network_parameters()
                     transmission_network.read_network_planning_data()
@@ -1152,7 +1143,6 @@ def _read_planning_problem(planning_problem):
                     shared_ess_data.discount_factor = planning_problem.discount_factor
                     shared_ess_data.prob_market_scenarios = planning_problem.prob_market_scenarios
                     shared_ess_data.cost_energy_p = planning_problem.cost_energy_p
-                    shared_ess_data.cost_energy_q = planning_problem.cost_energy_q
                     shared_ess_data.cost_secondary_reserve = planning_problem.cost_secondary_reserve
                     shared_ess_data.cost_tertiary_reserve_up = planning_problem.cost_tertiary_reserve_up
                     shared_ess_data.cost_tertiary_reserve_down = planning_problem.cost_tertiary_reserve_down
@@ -1192,13 +1182,11 @@ def _read_market_data_from_file(planning_problem):
             num_scenarios, prob_scenarios = _get_market_scenarios_info_from_excel_file(filename, 'Scenarios')
             planning_problem.prob_market_scenarios = prob_scenarios
             planning_problem.cost_energy_p[year] = dict()
-            planning_problem.cost_energy_q[year] = dict()
             planning_problem.cost_secondary_reserve[year] = dict()
             planning_problem.cost_tertiary_reserve_up[year] = dict()
             planning_problem.cost_tertiary_reserve_down[year] = dict()
             for day in planning_problem.days:
                 planning_problem.cost_energy_p[year][day] = _get_market_costs_from_excel_file(filename, f'Cp, {day}', num_scenarios)
-                planning_problem.cost_energy_q[year][day] = _get_market_costs_from_excel_file(filename, f'Cq, {day}', num_scenarios)
                 planning_problem.cost_secondary_reserve[year][day] = _get_market_costs_from_excel_file(filename, f'Csr, {day}', num_scenarios)
                 planning_problem.cost_tertiary_reserve_up[year][day] = _get_market_costs_from_excel_file(filename, f'Ctr_up, {day}', num_scenarios)
                 planning_problem.cost_tertiary_reserve_down[year][day] = _get_market_costs_from_excel_file(filename, f'Ctr_down, {day}', num_scenarios)
@@ -1715,7 +1703,7 @@ def _write_interface_power_flow_results_to_excel(planning_problem, workbook, res
     sheet.write(row_idx, 5, 'Market Scenario')
     sheet.write(row_idx, 6, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 7, p + 1)
+        sheet.write(0, p + 7, p)
     row_idx = row_idx + 1
 
     # TSO's results
@@ -1862,7 +1850,7 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
     sheet.write(row_idx, 4, 'Market Scenario')
     sheet.write(row_idx, 5, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 6, p + 1)
+        sheet.write(0, p + 6, p)
 
     for year in results:
         for day in results[year]:
@@ -2409,7 +2397,7 @@ def _write_network_generation_results_to_excel(planning_problem, workbook, resul
     sheet.write(row_idx, 8, 'Market Scenario')
     sheet.write(row_idx, 9, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 10, p + 1)
+        sheet.write(0, p + 10, p)
     row_idx = row_idx + 1
 
     # Write results -- TSO
@@ -2719,16 +2707,15 @@ def _write_network_branch_power_flow_results_to_excel(planning_problem, workbook
     # Write Header
     sheet.write(row_idx, 0, 'Operator')
     sheet.write(row_idx, 1, 'Connection Node ID')
-    sheet.write(row_idx, 2, 'Network Node ID')
-    sheet.write(row_idx, 3, 'Generator ID')
-    sheet.write(row_idx, 4, 'Type')
-    sheet.write(row_idx, 5, 'Year')
-    sheet.write(row_idx, 6, 'Day')
-    sheet.write(row_idx, 7, 'Quantity')
-    sheet.write(row_idx, 8, 'Market Scenario')
-    sheet.write(row_idx, 9, 'Operation Scenario')
+    sheet.write(row_idx, 2, 'From Node ID')
+    sheet.write(row_idx, 3, 'To Node ID')
+    sheet.write(row_idx, 4, 'Year')
+    sheet.write(row_idx, 5, 'Day')
+    sheet.write(row_idx, 6, 'Quantity')
+    sheet.write(row_idx, 7, 'Market Scenario')
+    sheet.write(row_idx, 8, 'Operation Scenario')
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 10, p + 1)
+        sheet.write(0, p + 9, p + 0)
     row_idx = row_idx + 1
 
     # Write results -- TSO
@@ -3137,6 +3124,82 @@ def _write_network_power_flow_results_per_operator(network, sheet, operator_type
                 row_idx = row_idx + 1
 
     return row_idx
+
+
+# ======================================================================================================================
+#   NETWORK diagram functions (plot)
+# ======================================================================================================================
+def _plot_networkx_diagram(planning_problem):
+
+    for year in planning_problem.years:
+        for day in planning_problem.days:
+
+            transmission_network = planning_problem.transmission_network.network[year][day]
+
+            node_labels = {}
+            ref_nodes, pv_nodes, pq_nodes = [], [], []
+            res_pv_nodes = [gen.bus for gen in transmission_network.generators if gen.gen_type == GEN_NONCONVENTIONAL_SOLAR]
+            res_wind_nodes = [gen.bus for gen in transmission_network.generators if gen.gen_type == GEN_NONCONVENTIONAL_WIND]
+            adn_nodes = planning_problem.active_distribution_network_nodes
+
+            branches = []
+            line_list, open_line_list = [], []
+            transf_list, open_transf_list = [], []
+            for branch in transmission_network.branches:
+                if branch.is_transformer:
+                    branches.append({'type': 'transformer', 'data': branch})
+                else:
+                    branches.append({'type': 'line', 'data': branch})
+
+            # Build graph
+            graph = nx.Graph()
+            for i in range(len(transmission_network.nodes)):
+                node = transmission_network.nodes[i]
+                graph.add_node(node.bus_i)
+                node_labels[node.bus_i] = '{}'.format(node.bus_i)
+                if node.type == BUS_REF:
+                    ref_nodes.append(node.bus_i)
+                elif node.type == BUS_PV:
+                    pv_nodes.append(node.bus_i)
+                elif node.type == BUS_PQ:
+                    if node.bus_i not in (res_pv_nodes + res_wind_nodes + adn_nodes):
+                        pq_nodes.append(node.bus_i)
+
+            for i in range(len(branches)):
+                branch = branches[i]
+                if branch['type'] == 'line':
+                    graph.add_edge(branch['data'].fbus, branch['data'].tbus)
+                    if branch['data'].status == 1:
+                        line_list.append((branch['data'].fbus, branch['data'].tbus))
+                    else:
+                        open_line_list.append((branch['data'].fbus, branch['data'].tbus))
+                if branch['type'] == 'transformer':
+                    graph.add_edge(branch['data'].fbus, branch['data'].tbus)
+                    if branch['data'].status == 1:
+                        transf_list.append((branch['data'].fbus, branch['data'].tbus))
+                    else:
+                        open_transf_list.append((branch['data'].fbus, branch['data'].tbus))
+
+            # Plot diagram
+            pos = nx.spring_layout(graph, k=0.10, iterations=1000)
+            fig, ax = plt.subplots(figsize=(12, 8))
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=ref_nodes, node_color='red', node_size=200, label='Reference bus')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=pv_nodes, node_color='lightgreen', node_size=200, label='Conventional generator')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=pq_nodes, node_color='lightblue', node_size=200, label='PQ buses')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=res_pv_nodes, node_color='yellow', node_size=200, label='RES, PV')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=res_wind_nodes, node_color='blue', node_size=200, label='RES, Wind')
+            nx.draw_networkx_nodes(graph, ax=ax, pos=pos, nodelist=adn_nodes, node_color='orange', node_size=200, label='ADN buses')
+            nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=10)
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=1.0, edge_color='black')
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=1.5, edge_color='blue', label='Transformer')
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=1.0, edge_color='red')
+            nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=1.5, edge_color='red')
+            plt.legend(scatterpoints=1, frameon=False, prop={'size': 12})
+            plt.axis('off')
+
+            filename = os.path.join(planning_problem.diagrams_dir, f'{planning_problem.name}_{year}_{day}')
+            plt.savefig(f'{filename}.pdf', bbox_inches='tight')
+            plt.savefig(f'{filename}.png', bbox_inches='tight')
 
 
 # ======================================================================================================================

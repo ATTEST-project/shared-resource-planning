@@ -52,8 +52,8 @@ class SharedEnergyStorageData:
     def build_subproblem(self):
         return _build_subproblem_model(self)
 
-    def optimize(self, model):
-        return _optimize(model, self.params.solver_params)
+    def optimize(self, model, from_warm_start=False):
+        return _optimize(model, self.params.solver_params, from_warm_start=from_warm_start)
 
     def get_sensitivities(self, model):
         return _get_sensitivities(model)
@@ -512,18 +512,36 @@ def _build_subproblem_model(shared_ess_data):
     model.objective = pe.Objective(sense=pe.minimize, expr=obj)
 
     # Define that we want the duals
+    model.ipopt_zL_out = pe.Suffix(direction=pe.Suffix.IMPORT)  # Ipopt bound multipliers (obtained from solution)
+    model.ipopt_zU_out = pe.Suffix(direction=pe.Suffix.IMPORT)
+    model.ipopt_zL_in = pe.Suffix(direction=pe.Suffix.EXPORT)  # Ipopt bound multipliers (sent to solver)
+    model.ipopt_zU_in = pe.Suffix(direction=pe.Suffix.EXPORT)
     model.dual = pe.Suffix(direction=pe.Suffix.IMPORT_EXPORT)
 
     return model
 
 
-def _optimize(model, params):
+def _optimize(model, params, from_warm_start=False):
+
     solver = po.SolverFactory(params.solver, executable=params.solver_path)
+
+    if from_warm_start:
+        model.ipopt_zL_in.update(model.ipopt_zL_out)
+        model.ipopt_zU_in.update(model.ipopt_zU_out)
+        solver.options['warm_start_init_point'] = 'yes'
+        solver.options['warm_start_bound_push'] = 1e-9
+        solver.options['warm_start_mult_bound_push'] = 1e-9
+        solver.options['mu_init'] = 1e-9
+
     solver.options['tol'] = params.solver_tol
-    solver.options['linear_solver'] = params.linear_solver
     if params.verbose:
         solver.options['print_level'] = 6
         solver.options['output_file'] = 'optim_log.txt'
+
+    if params.solver == 'ipopt':
+        solver.options['linear_solver'] = params.linear_solver
+        solver.options['max_iter'] = 10000
+        solver.options['nlp_scaling_method'] = 'none'
 
     result = solver.solve(model, tee=params.verbose)
 

@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import pyomo.opt as po
 import pyomo.environ as pe
-from math import pi, tan, acos, sqrt, atan2, isclose
+from math import pi, sqrt, atan2
 import networkx as nx
 import matplotlib.pyplot as plt
 from node import Node
@@ -100,17 +100,6 @@ class Network:
                 return node.v_min, node.v_max
         print(f'[ERROR] Network {self.name}. Node {node_id} not found! Check network.')
         exit(ERROR_NETWORK_FILE)
-
-    def get_branch_ibase(self, branch_idx):
-        branch = self.branches[branch_idx]
-        vbase = min(self.get_node_base_voltage(branch.fbus), self.get_node_base_voltage(branch.tbus))
-        # Note: in case vbase is not given
-        if vbase == 0.0:
-            if self.is_transmission:
-                vbase = UNKNOWN_TRANSMISSION_VOLTAGE_LEVEL
-            else:
-                vbase = UNKNOWN_DISTRIBUTION_VOLTAGE_LEVEL
-        return self.baseMVA / vbase
 
     def get_gen_idx(self, node_id):
         for g in range(len(self.generators)):
@@ -442,6 +431,8 @@ def _build_model(network, params):
         model.es_soc = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
         model.es_pch = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
         model.es_pdch = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
+        if params.ess_relax:
+            model.es_w = pe.Var(model.energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
         for e in model.energy_storages:
             energy_storage = network.energy_storages[e]
             for s_m in model.scenarios_market:
@@ -459,6 +450,8 @@ def _build_model(network, params):
     model.shared_es_soc = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     model.shared_es_pch = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     model.shared_es_pdch = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
+    if params.ess_relax:
+        model.shared_es_w = pe.Var(model.shared_energy_storages, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     for e in model.shared_energy_storages:
         model.shared_es_s_rated[e].fix(0.00)
         model.shared_es_e_rated[e].fix(0.00)
@@ -575,7 +568,11 @@ def _build_model(network, params):
 
                         # Charging/discharging exclusivity constraint
                         if params.ess_relax:
-                            model.energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.00)
+                            # McCormick envelopes
+                            #model.energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.00)
+                            model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pch)
+                            model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pdch)
+                            model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] >= energy_storage.s * pch + energy_storage.s * pdch - energy_storage.s**2)
                         else:
                             model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
 
@@ -618,9 +615,15 @@ def _build_model(network, params):
                         model.shared_energy_storage_balance.add(con_balance)
 
                     # Charging/discharging exclusivity constraint
-                    model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.0)
                     model.shared_energy_storage_ch_dch_exclusion.add(pch <= pch_max)
                     model.shared_energy_storage_ch_dch_exclusion.add(pdch <= pdch_max)
+                    if params.ess_relax:
+                        # McCormick envelopes
+                        model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] <= pch_max * pdch)
+                        model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] <= pdch_max * pch)
+                        model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] >= pdch_max * pch + pch_max * pdch - pch_max * pdch_max)
+                    else:
+                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.0)
 
                 con_day_balance = model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
                 model.shared_energy_storage_day_balance.add(con_day_balance)
@@ -863,14 +866,14 @@ def _build_model(network, params):
                         for p in model.periods:
                             slack_e = model.slack_e_up[i, s_m, s_o, p] + model.slack_e_down[i, s_m, s_o, p]
                             slack_f = model.slack_f_up[i, s_m, s_o, p] + model.slack_f_down[i, s_m, s_o, p]
-                            obj_scenario += PENALTY_SLACK_VOLTAGE * (slack_e + slack_f)
+                            obj_scenario += COST_SLACK_VOLTAGE * (slack_e + slack_f)
 
                 # Branch power flow slacks
                 if params.slack_line_limits:
                     for b in model.branches:
                         for p in model.periods:
                             slack_iij_sqr = model.slack_iij_sqr[b, s_m, s_o, p]
-                            obj_scenario += PENALTY_SLACK_BRANCH_FLOW * slack_iij_sqr
+                            obj_scenario += COST_SLACK_BRANCH_FLOW * slack_iij_sqr
 
                 obj += obj_scenario * omega_market * omega_oper
 
@@ -941,9 +944,9 @@ def run_smopf(model, params, from_warm_start=False):
         model.ipopt_zL_in.update(model.ipopt_zL_out)
         model.ipopt_zU_in.update(model.ipopt_zU_out)
         solver.options['warm_start_init_point'] = 'yes'
-        solver.options['warm_start_bound_push'] = params.solver_tol
-        solver.options['warm_start_mult_bound_push'] = params.solver_tol
-        solver.options['mu_init'] = params.solver_tol
+        solver.options['warm_start_bound_push'] = 1e-9
+        solver.options['warm_start_mult_bound_push'] = 1e-9
+        solver.options['mu_init'] = 1e-9
 
     solver.options['tol'] = params.solver_tol
     if params.verbose:
@@ -952,9 +955,9 @@ def run_smopf(model, params, from_warm_start=False):
 
     if params.solver == 'ipopt':
         solver.options['linear_solver'] = params.linear_solver
-        #solver.options['nlp_scaling_method'] = 'none'
-        #solver.options['mu_init '] = 1e-6
-        #solver.options['max_iter '] = 100
+        solver.options['max_iter'] = 10000
+        solver.options['nlp_scaling_method'] = 'none'
+        # solver.options['print_info_string'] = 'yes'
 
     result = solver.solve(model, tee=params.verbose)
 
@@ -1837,7 +1840,7 @@ def _process_results(network, model, params, results=dict()):
                     processed_results[s_m][s_o]['branches']['power_flow']['sji'][k].append(sqrt(sji_sqr))
 
                     # Current
-                    iij_sqr = pe.value(model.iij_sqr[k, s_m, s_o, p])
+                    iij_sqr = abs(pe.value(model.iij_sqr[k, s_m, s_o, p]))
                     processed_results[s_m][s_o]['branches']['current_perc'][k].append(sqrt(iij_sqr) / rating)
 
                     # Losses (active power)
@@ -1858,11 +1861,16 @@ def _process_results(network, model, params, results=dict()):
                     processed_results[s_m][s_o]['energy_storages']['soc'][node_id] = []
                     processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id] = []
                     for p in model.periods:
-                        p_ess = pe.value(model.es_pch[e, s_m, s_o, p] - model.es_pdch[e, s_m, s_o, p]) * network.baseMVA
-                        soc_ess = pe.value(model.es_soc[e, s_m, s_o, p]) * network.baseMVA
-                        processed_results[s_m][s_o]['energy_storages']['p'][node_id].append(p_ess)
-                        processed_results[s_m][s_o]['energy_storages']['soc'][node_id].append(soc_ess)
-                        processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id].append(soc_ess / capacity)
+                        if capacity > 0:
+                            p_ess = pe.value(model.es_pch[e, s_m, s_o, p] - model.es_pdch[e, s_m, s_o, p]) * network.baseMVA
+                            soc_ess = pe.value(model.es_soc[e, s_m, s_o, p]) * network.baseMVA
+                            processed_results[s_m][s_o]['energy_storages']['p'][node_id].append(p_ess)
+                            processed_results[s_m][s_o]['energy_storages']['soc'][node_id].append(soc_ess)
+                            processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id].append(soc_ess / capacity)
+                        else:
+                            processed_results[s_m][s_o]['energy_storages']['p'][node_id].append('N/A')
+                            processed_results[s_m][s_o]['energy_storages']['soc'][node_id].append('N/A')
+                            processed_results[s_m][s_o]['energy_storages']['soc_percent'][node_id].append('N/A')
 
             # Flexible loads
             if params.fl_reg:
@@ -2036,7 +2044,7 @@ def _compute_objective_function_value(network, model, params):
     if params.obj_type == OBJ_MIN_COST:
 
         c_p = network.cost_energy_p
-        c_q = network.cost_energy_q
+        #c_q = network.cost_energy_q
 
         for s_m in model.scenarios_market:
             for s_o in model.scenarios_operation:
@@ -2048,7 +2056,7 @@ def _compute_objective_function_value(network, model, params):
                     if network.generators[g].is_controllable():
                         for p in model.periods:
                             obj_scenario += c_p[s_m][p] * network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
-                            obj_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
+                            #obj_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
 
                 # Demand side flexibility
                 if params.fl_reg:
@@ -2105,7 +2113,7 @@ def _compute_generation_cost(network, model):
     gen_cost = 0.0
 
     c_p = network.cost_energy_p
-    c_q = network.cost_energy_q
+    #c_q = network.cost_energy_q
 
     for s_m in model.scenarios_market:
         for s_o in model.scenarios_operation:
@@ -2114,7 +2122,7 @@ def _compute_generation_cost(network, model):
                 if network.generators[g].is_controllable():
                     for p in model.periods:
                         gen_cost_scenario += c_p[s_m][p] * network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
-                        gen_cost_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
+                        #gen_cost_scenario += c_q[s_m][p] * network.baseMVA * pe.value(model.qg[g, s_m, s_o, p])
 
             gen_cost += gen_cost_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
 
