@@ -639,9 +639,7 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
         for y in model.years:
             year = repr_years[y]
             rating_s = shared_ess_data.shared_energy_storages[year][e].s
-            rating_s = 10.00
-            if rating_s == 0.0:
-                continue
+            rating_s = 1.00
             for d in model.days:
                 for p in model.periods:
                     p_ess = model.es_expected_p[e, y, d, p]
@@ -771,7 +769,7 @@ def update_shared_energy_storages_coordination_model_and_solve(planning_problem,
                     model.p_req_distr[e, y, d, p].fix(ess_req['dso'][node_id][year][day]['p'][p])
 
     # Solve!
-    res = shared_ess_data.optimize(model, from_warm_start=True)
+    res = shared_ess_data.optimize(model, from_warm_start=False)
     if res.solver.status != po.SolverStatus.ok:
         print('[ERROR] Did not converge!')
         exit(ERROR_SHARED_ESS_OPTIMIZATION)
