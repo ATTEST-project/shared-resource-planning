@@ -562,6 +562,8 @@ def update_distribution_models_to_admm(distribution_networks, models, initial_in
         for year in distribution_network.years:
             for day in distribution_network.days:
 
+                init_of_value = pe.value(dso_model[year][day].objective)
+
                 ref_node_id = distribution_network.network[year][day].get_reference_node_id()
                 ref_node_idx = distribution_network.network[year][day].get_node_idx(ref_node_id)
                 ref_gen_idx = distribution_network.network[year][day].get_reference_gen_idx()
@@ -592,7 +594,7 @@ def update_distribution_models_to_admm(distribution_networks, models, initial_in
                 dso_model[year][day].dual_ess_p = pe.Var(dso_model[year][day].periods, domain=pe.Reals)  # Dual variable - Shared ESS active power
 
                 # Objective function - augmented Lagrangian
-                obj = dso_model[year][day].objective.expr
+                obj = dso_model[year][day].objective.expr / max(abs(init_of_value), 1.00)
 
                 # Augmented Lagrangian -- Interface power flow (residual balancing)
                 s_base = distribution_network.network[year][day].baseMVA
@@ -634,12 +636,13 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
     model.dual_p_distr = pe.Var(model.energy_storages, model.years, model.days, model.periods, domain=pe.Reals)   # Dual variable - active power - distribution networks
 
     # Objective function - augmented Lagrangian
-    obj = model.objective.expr
+    init_of_value = pe.value(model.objective)
+    obj = model.objective.expr / abs(init_of_value)
     for e in model.energy_storages:
         for y in model.years:
             year = repr_years[y]
             rating_s = shared_ess_data.shared_energy_storages[year][e].s
-            rating_s = 1.00
+            rating_s = 10.00
             for d in model.days:
                 for p in model.periods:
                     p_ess = model.es_expected_p[e, y, d, p]

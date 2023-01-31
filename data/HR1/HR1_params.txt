@@ -7,7 +7,7 @@ ADMM
 admm_tol = 5e-2
 admm_num_max_iters = 100
 rho
-Location1 = 0.50
+Location1 = 1.00
 A_BJ_35_1 = 1.00
 A_BJ_35_2 = 1.00
 A_KPC_35_1 = 1.00
