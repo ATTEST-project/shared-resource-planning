@@ -46,12 +46,9 @@ class SharedResourcesPlanning:
         print('[INFO] Running PLANNING PROBLEM...')
         _run_planning_problem(self)
 
-    def run_operational_planning(self, esso_model, tso_model, dso_models, consensus_vars, dual_vars):
+    def run_operational_planning(self, candidate_solution):
         print('[INFO] Running OPERATIONAL PLANNING...')
-        return _run_operational_planning(self, esso_model, tso_model, dso_models, consensus_vars, dual_vars)
-
-    def initialize_operational_planning_problem(self, candidate_solution):
-        return _initialize_operational_planning_problem(self, candidate_solution)
+        return _run_operational_planning(self, candidate_solution)
 
     def update_models_with_candidate_solution(self, tso_model, dso_models, esso_model, candidate_solution):
         self.transmission_network.update_model_with_candidate_solution(tso_model, candidate_solution['total_capacity'])
@@ -81,7 +78,10 @@ class SharedResourcesPlanning:
         processed_results = _process_operational_planning_results(self, tso_model, dso_models, esso_model, results)
         _write_operational_planning_results_to_excel(self, processed_results, primal_evolution=primal_evolution, filename=filename)
 
-    def write_planning_results_to_excel(self, tso_model, dso_models, esso_model, operational_results=dict(), bound_evolution=dict(), execution_time='N/A'):
+    def write_planning_results_to_excel(self, operational_planning_models, operational_results=dict(), bound_evolution=dict(), execution_time='N/A'):
+        tso_model = operational_planning_models['tso']
+        dso_models = operational_planning_models['dso']
+        esso_model = operational_planning_models['esso']
         filename = self.filename.replace('.txt', '') + '_planning_results'
         shared_ess_capacity = self.shared_ess_data.get_investment_and_available_capacities(esso_model)
         shared_ess_processed_results = self.shared_ess_data.process_results(esso_model, execution_time=execution_time)
@@ -129,7 +129,6 @@ def _run_planning_problem(planning_problem):
     # - Create and warm-start master and subproblem models
     start = time.time()
     esso_master_problem_model = shared_ess_data.build_master_problem()
-    esso_subproblem_model, tso_model, dso_models, consensus_vars, dual_vars = planning_problem.initialize_operational_planning_problem(candidate_solution)
 
     # Benders' main cycle
     while iter < benders_parameters.num_max_iters and not convergence:
@@ -140,15 +139,12 @@ def _run_planning_problem(planning_problem):
         _print_candidate_solution(candidate_solution)
 
         # 5. Subproblem
-        # 5.1. Solve subproblem(s), with fixed investment variables
-        planning_problem.update_models_with_candidate_solution(tso_model, dso_models, esso_subproblem_model, candidate_solution)
-        operational_results = planning_problem.run_operational_planning(esso_subproblem_model, tso_model, dso_models, consensus_vars, dual_vars)
-
+        # 5.1. Solve operational planning, with fixed investment variables and
         # 5.2. Get coupling constraints' sensitivities (subproblem)
-        sensitivities = shared_ess_data.get_sensitivities(esso_subproblem_model)
+        operational_results, sensitivities, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
 
         # 5.3. Get OF value (upper bound) from the subproblem
-        upper_bound = shared_ess_data.compute_primal_value(esso_subproblem_model)
+        upper_bound = shared_ess_data.compute_primal_value(lower_level_models['esso'])
         upper_bound_evolution.append(upper_bound)
 
         # 4. Convergence check
@@ -181,7 +177,7 @@ def _run_planning_problem(planning_problem):
     end = time.time()
     total_execution_time = end - start
     bound_evolution = {'lower_bound': lower_bound_evolution, 'upper_bound': upper_bound_evolution}
-    planning_problem.write_planning_results_to_excel(tso_model, dso_models, esso_subproblem_model, operational_results, bound_evolution, execution_time=total_execution_time)
+    planning_problem.write_planning_results_to_excel(lower_level_models, operational_results, bound_evolution, execution_time=total_execution_time)
 
 
 def _print_candidate_solution(candidate_solution):
@@ -211,14 +207,20 @@ def _print_candidate_solution(candidate_solution):
 # ======================================================================================================================
 #  OPERATIONAL PLANNING functions
 # ======================================================================================================================
-def _initialize_operational_planning_problem(planning_problem, candidate_solution):
+def _run_operational_planning(planning_problem, candidate_solution):
 
     transmission_network = planning_problem.transmission_network
     distribution_networks = planning_problem.distribution_networks
     shared_ess_data = planning_problem.shared_ess_data
     admm_parameters = planning_problem.params.admm
+    results = {'tso': dict(), 'dso': dict(), 'esso': dict()}
 
-    # Creste ADMM variables
+    # ------------------------------------------------------------------------------------------------------------------
+    # 0. Initialization
+    #start = time.time()
+    primal_evolution = list()
+
+    # Create ADMM variables
     consensus_vars, dual_vars = create_admm_variables(planning_problem)
 
     # Create Operational Planning models
@@ -230,23 +232,6 @@ def _initialize_operational_planning_problem(planning_problem, candidate_solutio
 
     esso_model = create_shared_energy_storage_model(shared_ess_data, candidate_solution['investment'])
     update_shared_energy_storage_model_to_admm(shared_ess_data, esso_model, admm_parameters)
-
-    planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
-
-    return esso_model, tso_model, dso_models, consensus_vars, dual_vars
-
-
-def _run_operational_planning(planning_problem, esso_model, tso_model, dso_models, consensus_vars, dual_vars):
-
-    transmission_network = planning_problem.transmission_network
-    distribution_networks = planning_problem.distribution_networks
-    admm_parameters = planning_problem.params.admm
-    results = {'tso': dict(), 'dso': dict(), 'esso': dict()}
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # 0. Initialization
-    #start = time.time()
-    primal_evolution = list()
 
     # ------------------------------------------------------------------------------------------------------------------
     # ADMM -- Main cycle
@@ -323,7 +308,12 @@ def _run_operational_planning(planning_problem, esso_model, tso_model, dso_model
         print(f'[WARNING] ADMM did NOT converge in {admm_parameters.num_max_iters} iterations!')
     else:
         print(f'[INFO] \t - ADMM converged in {iter + 1} iterations.')
-    return results
+
+    # Used in the outer cycle
+    sensitivities = shared_ess_data.get_sensitivities(esso_model)
+    optim_models = {'tso': tso_model, 'dso': dso_models, 'esso': esso_model}
+
+    return results, sensitivities, optim_models
 
 
 def create_admm_variables(planning_problem):
