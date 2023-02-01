@@ -145,7 +145,6 @@ def _run_planning_problem(planning_problem):
 
         # 1.3. Get OF value (upper bound) from the subproblem
         upper_bound = shared_ess_data.compute_primal_value(lower_level_models['esso'])
-        upper_bound_evolution.append(upper_bound)
 
         # 2. Solve Master problem
         # 2.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
@@ -157,16 +156,18 @@ def _run_planning_problem(planning_problem):
         # 2.3. Get new capacity values, and the value of alpha (lower bound)
         candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
         lower_bound = pe.value(esso_master_problem_model.alpha)
-        lower_bound_evolution.append(lower_bound)
 
         # 3. Convergence check
         if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
+            upper_bound_evolution.append(upper_bound)
             lower_bound_evolution.append(lower_bound)
             convergence = True
             break
 
-        # 3.1. Update iter
+        # 3.1. Update iter, update bounds evolution
         iter += 1
+        upper_bound_evolution.append(upper_bound)
+        lower_bound_evolution.append(lower_bound)
 
     if not convergence:
         print('[WARNING] Convergence not obtained!')
