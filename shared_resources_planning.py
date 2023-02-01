@@ -138,35 +138,35 @@ def _run_planning_problem(planning_problem):
         print(f'[INFO] Iter {iter}. LB = {lower_bound}, UB = {upper_bound}')
         _print_candidate_solution(candidate_solution)
 
-        # 5. Subproblem
-        # 5.1. Solve operational planning, with fixed investment variables and
-        # 5.2. Get coupling constraints' sensitivities (subproblem)
+        # 1. Subproblem
+        # 1.1. Solve operational planning, with fixed investment variables and
+        # 1.2. Get coupling constraints' sensitivities (subproblem)
         operational_results, sensitivities, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
 
-        # 5.3. Get OF value (upper bound) from the subproblem
+        # 1.3. Get OF value (upper bound) from the subproblem
         upper_bound = shared_ess_data.compute_primal_value(lower_level_models['esso'])
         upper_bound_evolution.append(upper_bound)
 
-        # 4. Convergence check
+        # 2. Solve Master problem
+        # 2.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
+        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities, candidate_solution['investment'])
+
+        # 2.2. Run master problem optimization
+        shared_ess_data.optimize(esso_master_problem_model)
+
+        # 2.3. Get new capacity values, and the value of alpha (lower bound)
+        candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
+        lower_bound = pe.value(esso_master_problem_model.alpha)
+        lower_bound_evolution.append(lower_bound)
+
+        # 3. Convergence check
         if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
             lower_bound_evolution.append(lower_bound)
             convergence = True
             break
 
-        # 4.1. Update iter
+        # 3.1. Update iter
         iter += 1
-
-        # 3. Solve Master problem
-        # 3.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
-        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities, candidate_solution['investment'])
-
-        # 3.2. Run master problem optimization
-        shared_ess_data.optimize(esso_master_problem_model)
-
-        # 3.3. Get new capacity values, and the value of alpha (lower bound)
-        candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
-        lower_bound = pe.value(esso_master_problem_model.alpha)
-        lower_bound_evolution.append(lower_bound)
 
     if not convergence:
         print('[WARNING] Convergence not obtained!')
@@ -258,7 +258,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
 
         # 2.3 STOPPING CRITERIA evaluation
-        if iter > 1:
+        if iter >= 1:
             convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
             if convergence:
                 break
@@ -278,7 +278,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
 
         # 3.3 STOPPING CRITERIA evaluation
-        if iter > 1:
+        if iter >= 1:
             convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
             if convergence:
                 break
@@ -528,10 +528,9 @@ def update_transmission_model_to_admm(transmission_network, model, initial_inter
                     obj += (model[year][day].rho / 2) * constraint_q_req ** 2
 
             for e in model[year][day].active_distribution_networks:
-                #rating = transmission_network.network[year][day].shared_energy_storages[e].s
-                rating = 10.00
+                rating = transmission_network.network[year][day].shared_energy_storages[e].s
                 if rating == 0.0:
-                    continue
+                    rating = 1.00       # Do not balance residuals
                 for p in model[year][day].periods:
                     constraint_ess_p = (model[year][day].expected_shared_ess_p[e, p] - model[year][day].p_ess_req[e, p]) / (2 * rating)
                     obj += model[year][day].dual_ess_p[e, p] * constraint_ess_p
@@ -553,6 +552,10 @@ def update_distribution_models_to_admm(distribution_networks, models, initial_in
             for day in distribution_network.days:
 
                 init_of_value = pe.value(dso_model[year][day].objective)
+                rating = distribution_network.network[year][day].shared_energy_storages[0].s
+                if rating == 0.0:
+                    rating = 1.00                # Do not balance residuals
+                    init_of_value = 1.00
 
                 ref_node_id = distribution_network.network[year][day].get_reference_node_id()
                 ref_node_idx = distribution_network.network[year][day].get_node_idx(ref_node_id)
@@ -599,10 +602,6 @@ def update_distribution_models_to_admm(distribution_networks, models, initial_in
                     obj += (dso_model[year][day].rho / 2) * (constraint_q_req) ** 2
 
                 # Augmented Lagrangian -- Shared ESS (residual balancing)
-                rating = distribution_network.network[year][day].shared_energy_storages[0].s
-                rating = 10.00
-                if rating == 0.0:
-                    continue
                 for p in dso_model[year][day].periods:
                     constraint_ess_p = (dso_model[year][day].expected_shared_ess_p[p] - dso_model[year][day].p_ess_req[p]) / (2 * rating)
                     obj += dso_model[year][day].dual_ess_p[p] * (constraint_ess_p)
@@ -632,7 +631,8 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
         for y in model.years:
             year = repr_years[y]
             rating_s = shared_ess_data.shared_energy_storages[year][e].s
-            rating_s = 10.00
+            if rating_s == 0.0:
+                rating_s = 1.00     # Do not balance residuals
             for d in model.days:
                 for p in model.periods:
                     p_ess = model.es_expected_p[e, y, d, p]
@@ -885,8 +885,8 @@ def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_mod
                 for t in range(planning_problem.num_instants):
                     error_p_ess_transm = shared_ess_vars['tso'][node_id][year][day]['p'][t] - shared_ess_vars['esso'][node_id][year][day]['p'][t]
                     error_p_ess_distr = shared_ess_vars['dso'][node_id][year][day]['p'][t] - shared_ess_vars['esso'][node_id][year][day]['p'][t]
-                    dual_vars['tso'][node_id][year][day]['p'][t] += params.rho[distribution_network.name] * (error_p_ess_transm)
-                    dual_vars['dso'][node_id][year][day]['p'][t] += params.rho[distribution_network.name] * (error_p_ess_distr)
+                    dual_vars['tso'][node_id][year][day]['p'][t] += params.rho['ESSO'] * (error_p_ess_transm)
+                    dual_vars['dso'][node_id][year][day]['p'][t] += params.rho['ESSO'] * (error_p_ess_distr)
 
 
 def compute_primal_value(planning_problem, tso_model, esso_model):
