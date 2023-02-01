@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import pyomo.opt as po
 import pyomo.environ as pe
-from math import pi, sqrt, atan2
+from math import pi, sqrt, atan2, isclose
 import networkx as nx
 import matplotlib.pyplot as plt
 from node import Node
@@ -878,6 +878,7 @@ def _build_model(network, params):
                 obj += obj_scenario * omega_market * omega_oper
 
         model.objective = pe.Objective(sense=pe.minimize, expr=obj)
+
     elif params.obj_type == OBJ_CONGESTION_MANAGEMENT:
 
         # Congestion Management
@@ -1726,6 +1727,7 @@ def _process_results(network, model, params, results=dict()):
                 'branches': {'power_flow': {'pij': {}, 'pji': {}, 'qij': {}, 'qji': {}, 'sij': {}, 'sji': {}},
                              'current_perc': {}, 'losses': {}, 'ratio': {}},
                 'energy_storages': {'p': {}, 'soc': {}, 'soc_percent': {}},
+                'shared_energy_storages': {'p': {}, 'soc': {}, 'soc_percent': {}},
             }
 
             if params.transf_reg:
@@ -1883,6 +1885,25 @@ def _process_results(network, model, params, results=dict()):
                         p_down = pe.value(model.flex_p_down[i, s_m, s_o, p]) * network.baseMVA
                         processed_results[s_m][s_o]['consumption']['p_up'][node_id].append(p_up)
                         processed_results[s_m][s_o]['consumption']['p_down'][node_id].append(p_down)
+
+            # Shared Energy Storages
+            for e in model.shared_energy_storages:
+                node_id = network.shared_energy_storages[e].bus
+                capacity = pe.value(model.shared_es_e_rated[e]) * network.baseMVA
+                processed_results[s_m][s_o]['shared_energy_storages']['p'][node_id] = []
+                processed_results[s_m][s_o]['shared_energy_storages']['soc'][node_id] = []
+                processed_results[s_m][s_o]['shared_energy_storages']['soc_percent'][node_id] = []
+                for p in model.periods:
+                    if not isclose(capacity, 0.0, abs_tol=1e-3):
+                        p_ess = pe.value(model.shared_es_pch[e, s_m, s_o, p] - model.shared_es_pdch[e, s_m, s_o, p]) * network.baseMVA
+                        soc_ess = pe.value(model.shared_es_soc[e, s_m, s_o, p]) * network.baseMVA
+                        processed_results[s_m][s_o]['shared_energy_storages']['p'][node_id].append(p_ess)
+                        processed_results[s_m][s_o]['shared_energy_storages']['soc'][node_id].append(soc_ess)
+                        processed_results[s_m][s_o]['shared_energy_storages']['soc_percent'][node_id].append(soc_ess / capacity)
+                    else:
+                        processed_results[s_m][s_o]['shared_energy_storages']['p'][node_id].append('N/A')
+                        processed_results[s_m][s_o]['shared_energy_storages']['soc'][node_id].append('N/A')
+                        processed_results[s_m][s_o]['shared_energy_storages']['soc_percent'][node_id].append('N/A')
 
     return processed_results
 

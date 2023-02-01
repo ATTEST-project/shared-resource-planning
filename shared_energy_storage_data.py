@@ -703,7 +703,7 @@ def _process_results(shared_ess_data, model, execution_time=0.00):
                     for e in model.energy_storages:
                         node_id = shared_ess_data.shared_energy_storages[year][e].bus
                         capacity_available = pe.value(model.es_e_capacity_available[e, y])
-                        if not isclose(capacity_available, 0.0, abs_tol=1e-6):
+                        if not isclose(capacity_available, 0.0, abs_tol=1e-3):
                             processed_results['results'][year][day][s_m][s_o]['p'][node_id] = []
                             processed_results['results'][year][day][s_m][s_o]['p_up'][node_id] = []
                             processed_results['results'][year][day][s_m][s_o]['p_down'][node_id] = []

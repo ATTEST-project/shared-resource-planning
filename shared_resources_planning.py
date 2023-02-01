@@ -249,7 +249,6 @@ def _run_operational_planning(planning_problem, candidate_solution):
         results['tso'] = update_transmission_coordination_model_and_solve(transmission_network, tso_model,
                                                                           consensus_vars['interface']['pf']['dso'], dual_vars['pf']['tso'],
                                                                           consensus_vars['ess']['esso'], dual_vars['ess']['tso'],
-                                                                          consensus_vars['ess']['capacity'],
                                                                           admm_parameters)
 
         # 2.1 Update ADMM CONSENSUS variables
@@ -269,7 +268,6 @@ def _run_operational_planning(planning_problem, candidate_solution):
         results['dso'] = update_distribution_coordination_models_and_solve(distribution_networks, dso_models, consensus_vars['interface']['v'],
                                                                            consensus_vars['interface']['pf']['tso'], dual_vars['pf']['dso'],
                                                                            consensus_vars['ess']['esso'], dual_vars['ess']['dso'],
-                                                                           consensus_vars['ess']['capacity'],
                                                                            admm_parameters)
 
         # 3.1 Update ADMM CONSENSUS variables
@@ -344,8 +342,6 @@ def create_admm_variables(planning_problem):
         consensus_variables['ess']['tso'][node_id] = dict()
         consensus_variables['ess']['dso'][node_id] = dict()
         consensus_variables['ess']['esso'][node_id] = dict()
-        consensus_variables['ess']['capacity']['s'][node_id] = dict()
-        consensus_variables['ess']['capacity']['e'][node_id] = dict()
 
         dual_variables['pf']['tso'][node_id] = dict()
         dual_variables['pf']['dso'][node_id] = dict()
@@ -360,8 +356,6 @@ def create_admm_variables(planning_problem):
             consensus_variables['ess']['tso'][node_id][year] = dict()
             consensus_variables['ess']['dso'][node_id][year] = dict()
             consensus_variables['ess']['esso'][node_id][year] = dict()
-            consensus_variables['ess']['capacity']['s'][node_id][year] = planning_problem.shared_ess_data.shared_energy_storages[year][dn].s
-            consensus_variables['ess']['capacity']['e'][node_id][year] = planning_problem.shared_ess_data.shared_energy_storages[year][dn].e
 
             dual_variables['pf']['tso'][node_id][year] = dict()
             dual_variables['pf']['dso'][node_id][year] = dict()
@@ -649,7 +643,7 @@ def update_shared_energy_storage_model_to_admm(shared_ess_data, model, params):
     return model
 
 
-def update_transmission_coordination_model_and_solve(transmission_network, model, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
+def update_transmission_coordination_model_and_solve(transmission_network, model, pf_req, dual_pf, ess_req, dual_ess, params):
 
     print('[INFO] \t\t - Updating transmission network...')
 
@@ -674,8 +668,6 @@ def update_transmission_coordination_model_and_solve(transmission_network, model
 
                 # Update shared ESS capacity and power requests
                 shared_ess_idx = transmission_network.network[year][day].get_shared_energy_storage_idx(node_id)
-                model[year][day].shared_es_s_rated[shared_ess_idx].fix(ess_capacity['s'][node_id][year] / s_base)
-                model[year][day].shared_es_e_rated[shared_ess_idx].fix(ess_capacity['e'][node_id][year] / s_base)
                 for p in model[year][day].periods:
                     model[year][day].dual_ess_p[shared_ess_idx, p].fix(dual_ess[node_id][year][day]['p'][p] / s_base)
                     model[year][day].p_ess_req[shared_ess_idx, p].fix(ess_req[node_id][year][day]['p'][p] / s_base)
@@ -691,7 +683,7 @@ def update_transmission_coordination_model_and_solve(transmission_network, model
     return res
 
 
-def update_distribution_coordination_models_and_solve(distribution_networks, models, interface_vmag, pf_req, dual_pf, ess_req, dual_ess, ess_capacity, params):
+def update_distribution_coordination_models_and_solve(distribution_networks, models, interface_vmag, pf_req, dual_pf, ess_req, dual_ess, params):
 
     print('[INFO] \t\t - Updating distribution networks:')
     res = dict()
@@ -725,8 +717,6 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
 
                 # Update SHARED ENERGY STORAGE variables (if existent)
                 shared_ess_idx = distribution_network.network[year][day].get_shared_energy_storage_idx(ref_node_id)
-                model[year][day].shared_es_s_rated[shared_ess_idx].fix(ess_capacity['s'][node_id][year] / s_base)
-                model[year][day].shared_es_e_rated[shared_ess_idx].fix(ess_capacity['e'][node_id][year] / s_base)
                 for p in model[year][day].periods:
                     model[year][day].dual_ess_p[p].fix(dual_ess[node_id][year][day]['p'][p] / s_base)
                     model[year][day].p_ess_req[p].fix(ess_req[node_id][year][day]['p'][p] / s_base)
@@ -843,8 +833,6 @@ def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_mod
         for y in sess_model.years:
             year = repr_years[y]
             shared_ess_idx = shared_ess_data.get_shared_energy_storage_idx(node_id)
-            shared_ess_vars['capacity']['s'][node_id][year] = abs(pe.value(sess_model.es_s_rated[shared_ess_idx, y]))
-            shared_ess_vars['capacity']['e'][node_id][year] = abs(pe.value(sess_model.es_e_rated[shared_ess_idx, y]))
             for d in sess_model.days:
                 day = repr_days[d]
                 shared_ess_vars['esso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
@@ -1834,6 +1822,8 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
     decimal_style.num_format_str = '0.00'
     percent_style = xlwt.easyxf(num_format_str='0.00%')
 
+    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+
     sheet = workbook.add_sheet('Shared ESS')
 
     # Write Header
@@ -1850,20 +1840,20 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
     # ESSO's results
     for year in results['esso']['results']:
         for day in results['esso']['results'][year]:
+
+            expected_p = dict()
+            expected_soc = dict()
+            expected_soc_percent = dict()
+            expected_pup = dict()
+            expected_pdown = dict()
+            for node_id in planning_problem.active_distribution_network_nodes:
+                expected_p[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_soc[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_soc_percent[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_pup[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_pdown[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+
             for s_m in results['esso']['results'][year][day]:
-
-                expected_p = dict()
-                expected_soc = dict()
-                expected_soc_percent = dict()
-                expected_pup = dict()
-                expected_pdown = dict()
-                for node_id in planning_problem.active_distribution_network_nodes:
-                    expected_p[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
-                    expected_soc[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
-                    expected_soc_percent[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
-                    expected_pup[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
-                    expected_pdown[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
-
                 if s_m != 'obj':
 
                     omega_m = planning_problem.shared_ess_data.prob_market_scenarios[s_m]
@@ -1959,66 +1949,286 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
                                 else:
                                     expected_pdown[node_id][p] = ess_pdown
 
-                for node_id in planning_problem.active_distribution_network_nodes:
+            for node_id in planning_problem.active_distribution_network_nodes:
 
-                    row_idx = row_idx + 1
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, 'ESSO')
-                    sheet.write(row_idx, 2, int(year))
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'P, [MW]')
-                    sheet.write(row_idx, 5, 'Expected')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(planning_problem.num_instants):
-                        sheet.write(row_idx, p + 7, expected_p[node_id][p], decimal_style)
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'ESSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'P, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_p[node_id][p], decimal_style)
 
-                    # State-of-Charge, [MVAh]
-                    row_idx = row_idx + 1
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, 'ESSO')
-                    sheet.write(row_idx, 2, int(year))
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'SoC, [MVAh]')
-                    sheet.write(row_idx, 5, 'Expected')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(planning_problem.num_instants):
-                        sheet.write(row_idx, p + 7, expected_soc[node_id][p], decimal_style)
+                # State-of-Charge, [MVAh]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'ESSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'SoC, [MVAh]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_soc[node_id][p], decimal_style)
 
-                    # State-of-Charge, [%]
-                    row_idx = row_idx + 1
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, 'ESSO')
-                    sheet.write(row_idx, 2, int(year))
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'SoC, [%]')
-                    sheet.write(row_idx, 5, 'Expected')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(planning_problem.num_instants):
-                        sheet.write(row_idx, p + 7, expected_soc_percent[node_id][p], percent_style)
+                # State-of-Charge, [%]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'ESSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'SoC, [%]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_soc_percent[node_id][p], percent_style)
 
-                    # Secondary reserve - Upward band, [MW]
-                    row_idx = row_idx + 1
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, 'ESSO')
-                    sheet.write(row_idx, 2, int(year))
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'Pup, [MW]')
-                    sheet.write(row_idx, 5, 'Expected')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(planning_problem.num_instants):
-                        sheet.write(row_idx, p + 7, expected_pup[node_id][p], decimal_style)
+                # Secondary reserve - Upward band, [MW]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'ESSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'Pup, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_pup[node_id][p], decimal_style)
 
-                    # Secondary reserve - Downward band, [MW]
-                    row_idx = row_idx + 1
-                    sheet.write(row_idx, 0, node_id)
-                    sheet.write(row_idx, 1, 'ESSO')
-                    sheet.write(row_idx, 2, int(year))
-                    sheet.write(row_idx, 3, day)
-                    sheet.write(row_idx, 4, 'Pdown, [MW]')
-                    sheet.write(row_idx, 5, 'Expected')
-                    sheet.write(row_idx, 6, '-')
-                    for p in range(planning_problem.num_instants):
-                        sheet.write(row_idx, p + 7, expected_pdown[node_id][p], decimal_style)
+                # Secondary reserve - Downward band, [MW]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'ESSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'Pdown, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_pdown[node_id][p], decimal_style)
+
+    # TSO's results
+    for year in results['tso']['results']:
+        for day in results['tso']['results'][year]:
+
+            expected_p = dict()
+            expected_soc = dict()
+            expected_soc_percent = dict()
+            for node_id in planning_problem.active_distribution_network_nodes:
+                expected_p[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_soc[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_soc_percent[node_id] = [0.0 for _ in range(planning_problem.num_instants)]
+
+            for s_m in results['tso']['results'][year][day]:
+                if s_m not in exclusions:
+
+                    omega_m = planning_problem.transmission_network.network[year][day].prob_market_scenarios[s_m]
+
+                    for s_o in results['tso']['results'][year][day][s_m]:
+
+                        omega_s = planning_problem.transmission_network.network[year][day].prob_operation_scenarios[s_o]
+
+                        for node_id in planning_problem.active_distribution_network_nodes:
+
+                            # Active power
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, 'TSO')
+                            sheet.write(row_idx, 2, int(year))
+                            sheet.write(row_idx, 3, day)
+                            sheet.write(row_idx, 4, 'P, [MW]')
+                            sheet.write(row_idx, 5, s_m)
+                            sheet.write(row_idx, 6, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_p = results['tso']['results'][year][day][s_m][s_o]['shared_energy_storages']['p'][node_id][p]
+                                sheet.write(row_idx, p + 7, ess_p, decimal_style)
+                                if ess_p != 'N/A':
+                                    expected_p[node_id][p] += ess_p * omega_m * omega_s
+                                else:
+                                    expected_p[node_id][p] = ess_p
+
+                            # State-of-Charge, [MVAh]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, 'TSO')
+                            sheet.write(row_idx, 2, int(year))
+                            sheet.write(row_idx, 3, day)
+                            sheet.write(row_idx, 4, 'SoC, [MVAh]')
+                            sheet.write(row_idx, 5, s_m)
+                            sheet.write(row_idx, 6, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_soc = results['tso']['results'][year][day][s_m][s_o]['shared_energy_storages']['soc'][node_id][p]
+                                sheet.write(row_idx, p + 7, ess_soc, decimal_style)
+                                if ess_soc != 'N/A':
+                                    expected_soc[node_id][p] += ess_soc * omega_m * omega_s
+                                else:
+                                    expected_soc[node_id][p] = ess_soc
+
+                            # State-of-Charge, [%]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, 'TSO')
+                            sheet.write(row_idx, 2, int(year))
+                            sheet.write(row_idx, 3, day)
+                            sheet.write(row_idx, 4, 'SoC, [%]')
+                            sheet.write(row_idx, 5, s_m)
+                            sheet.write(row_idx, 6, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_soc_percent = results['tso']['results'][year][day][s_m][s_o]['shared_energy_storages']['soc_percent'][node_id][p]
+                                sheet.write(row_idx, p + 7, ess_soc_percent, percent_style)
+                                if ess_soc_percent != 'N/A':
+                                    expected_soc_percent[node_id][p] += ess_soc_percent * omega_m * omega_s
+                                else:
+                                    expected_soc_percent[node_id][p] = ess_soc_percent
+
+            for node_id in planning_problem.active_distribution_network_nodes:
+
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'P, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_p[node_id][p], decimal_style)
+
+                # State-of-Charge, [MVAh]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'SoC, [MVAh]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_soc[node_id][p], decimal_style)
+
+                # State-of-Charge, [%]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'SoC, [%]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_soc_percent[node_id][p], percent_style)
+
+    # DSO's results
+    for node_id in results['dso']:
+        for year in results['dso'][node_id]['results']:
+            for day in results['dso'][node_id]['results'][year]:
+
+                distribution_network = planning_problem.distribution_networks[node_id].network[year][day]
+                ref_node_id = distribution_network.get_reference_node_id()
+                shared_ess_idx = distribution_network.get_shared_energy_storage_idx(ref_node_id)
+
+                expected_p = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_soc = [0.0 for _ in range(planning_problem.num_instants)]
+                expected_soc_percent = [0.0 for _ in range(planning_problem.num_instants)]
+
+                for s_m in results['dso'][node_id]['results'][year][day]:
+                    if s_m not in exclusions:
+
+                        omega_m = distribution_network.prob_market_scenarios[s_m]
+
+                        for s_o in results['dso'][node_id]['results'][year][day][s_m]:
+
+                            omega_s = distribution_network.prob_operation_scenarios[s_o]
+
+                            # Active power
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, 'DSO')
+                            sheet.write(row_idx, 2, int(year))
+                            sheet.write(row_idx, 3, day)
+                            sheet.write(row_idx, 4, 'P, [MW]')
+                            sheet.write(row_idx, 5, s_m)
+                            sheet.write(row_idx, 6, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_p = results['dso'][node_id]['results'][year][day][s_m][s_o]['shared_energy_storages']['p'][ref_node_id][p]
+                                sheet.write(row_idx, p + 7, ess_p, decimal_style)
+                                if ess_p != 'N/A':
+                                    expected_p[p] += ess_p * omega_m * omega_s
+                                else:
+                                    expected_p[p] = ess_p
+
+                            # State-of-Charge, [MVAh]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, 'DSO')
+                            sheet.write(row_idx, 2, int(year))
+                            sheet.write(row_idx, 3, day)
+                            sheet.write(row_idx, 4, 'SoC, [MVAh]')
+                            sheet.write(row_idx, 5, s_m)
+                            sheet.write(row_idx, 6, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_soc = results['dso'][node_id]['results'][year][day][s_m][s_o]['shared_energy_storages']['soc'][ref_node_id][p]
+                                sheet.write(row_idx, p + 7, ess_soc, decimal_style)
+                                if ess_soc != 'N/A':
+                                    expected_soc[p] += ess_soc * omega_m * omega_s
+                                else:
+                                    expected_soc[p] = ess_soc
+
+                            # State-of-Charge, [%]
+                            row_idx = row_idx + 1
+                            sheet.write(row_idx, 0, node_id)
+                            sheet.write(row_idx, 1, 'DSO')
+                            sheet.write(row_idx, 2, int(year))
+                            sheet.write(row_idx, 3, day)
+                            sheet.write(row_idx, 4, 'SoC, [%]')
+                            sheet.write(row_idx, 5, s_m)
+                            sheet.write(row_idx, 6, s_o)
+                            for p in range(planning_problem.num_instants):
+                                ess_soc_percent = results['dso'][node_id]['results'][year][day][s_m][s_o]['shared_energy_storages']['soc_percent'][ref_node_id][p]
+                                sheet.write(row_idx, p + 7, ess_soc_percent, percent_style)
+                                if ess_soc_percent != 'N/A':
+                                    expected_soc_percent[p] += ess_soc_percent * omega_m * omega_s
+                                else:
+                                    expected_soc_percent[p] = ess_soc_percent
+
+                # Expected values
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'DSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'P, [MW]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_p[p], decimal_style)
+
+                # State-of-Charge, [MVAh]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'SoC, [MVAh]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_soc[p], decimal_style)
+
+                # State-of-Charge, [%]
+                row_idx = row_idx + 1
+                sheet.write(row_idx, 0, node_id)
+                sheet.write(row_idx, 1, 'TSO')
+                sheet.write(row_idx, 2, int(year))
+                sheet.write(row_idx, 3, day)
+                sheet.write(row_idx, 4, 'SoC, [%]')
+                sheet.write(row_idx, 5, 'Expected')
+                sheet.write(row_idx, 6, '-')
+                for p in range(planning_problem.num_instants):
+                    sheet.write(row_idx, p + 7, expected_soc_percent[p], percent_style)
 
 
 def _write_network_voltage_results_to_excel(planning_problem, workbook, results):

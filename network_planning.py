@@ -123,12 +123,6 @@ def _process_results(network_planning, models, optimization_results):
             result = optimization_results[year][day]
             network = network_planning.network[year][day]
             processed_results['results'][year][day] = network.process_results(model, network_planning.params, result)
-            '''
-            if result.solver.status == po.SolverStatus.ok:
-                processed_results['results'][year][day] = network.process_results(model, network_planning.params, result)
-            else:
-                print(f'[WARNING] Network {network.name} SMOPF: did not converge!')
-            '''
     return processed_results
 
 
