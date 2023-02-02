@@ -1349,7 +1349,7 @@ def _read_network_operational_data_from_file(network, filename):
             'cost': dict()
         },
         'generation': {
-            'pg': dict(), 'qg': dict(),
+            'pg': dict(), 'qg': dict(), 'status': list()
         }
     }
 
@@ -1394,6 +1394,13 @@ def _read_network_operational_data_from_file(network, filename):
                 exit(ERROR_OPERATIONAL_DATA_FILE)
             data['generation']['pg'][i] = pg_scenario
             data['generation']['qg'][i] = qg_scenario
+
+    # Generators status
+    gen_status = _get_generator_status_from_excel_file(filename, f'GenStatus, {network.day}')
+    if not gen_status:
+        for i in range(len(network.generators)):
+            gen_status.append([1 for _ in range(network.num_instants)])
+    data['generation']['status'] = gen_status
 
     # Flexibility data
     flex_up_p = _get_operational_data_from_excel_file(filename, f'UpFlex, {network.day}')
@@ -1463,6 +1470,25 @@ def _get_operational_data_from_excel_file(filename, sheet_name):
         processed_data = {}
 
     return processed_data
+
+
+def _get_generator_status_from_excel_file(filename, sheet_name):
+
+    try:
+        data = pd.read_excel(filename, sheet_name=sheet_name)
+        num_rows, num_cols = data.shape
+        status_values = list()
+        for i in range(num_rows):
+            status_values_gen = list()
+            for j in range(0, num_cols - 1):
+                status_values_gen.append(data.iloc[i, j + 1])
+            status_values.append(status_values_gen)
+    except:
+        print(f'[WARNING] Workbook {filename}. Sheet {sheet_name} does not exist.')
+        status_values = list()
+
+    return status_values
+
 
 
 def _update_network_with_excel_data(network, data):

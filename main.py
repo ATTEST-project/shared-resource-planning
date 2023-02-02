@@ -58,15 +58,15 @@ def shared_resources_planning(working_directory, specification_filename):
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
     #planning_problem.plot_diagram()
-    planning_problem.run_planning_problem()
+    #planning_problem.run_planning_problem()
 
-    '''
     transmission_network = planning_problem.transmission_network
     tn_model = transmission_network.build_model()
     results = transmission_network.optimize(tn_model)
     processed_results = transmission_network.process_results(tn_model, results)
     transmission_network.write_optimization_results_to_excel(processed_results)
 
+    '''
     distribution_networks = planning_problem.distribution_networks
     for node_id in distribution_networks:
         distribution_network = distribution_networks[node_id]
@@ -93,7 +93,7 @@ if __name__ == '__main__':
     '''
 
     filename = 'HR1.txt'
-    directory = os.path.join(os.getcwd(), 'data', 'HR1')
+    directory = os.path.join(os.getcwd(), 'data', 'Simulations', 'HR1')
     shared_resources_planning(directory, filename)
 
 
