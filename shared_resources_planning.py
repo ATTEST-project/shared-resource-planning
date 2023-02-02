@@ -1065,6 +1065,8 @@ def _read_planning_problem(planning_problem):
                         distribution_network.cost_energy_p = planning_problem.cost_energy_p
                         distribution_network.params_file = params_file
                         distribution_network.read_network_parameters()
+                        if distribution_network.params.obj_type == OBJ_CONGESTION_MANAGEMENT:
+                            distribution_network.prob_market_scenarios = [1.00]
                         distribution_network.read_network_planning_data()
                         distribution_network.tn_connection_nodeid = connection_nodeid
 
@@ -1096,6 +1098,8 @@ def _read_planning_problem(planning_problem):
                     transmission_network.cost_energy_p = planning_problem.cost_energy_p
                     transmission_network.params_file = params_file
                     transmission_network.read_network_parameters()
+                    if transmission_network.params.obj_type == OBJ_CONGESTION_MANAGEMENT:
+                        transmission_network.prob_market_scenarios = [1.00]
                     transmission_network.read_network_planning_data()
 
                     transmission_network.active_distribution_network_nodes = [node_id for node_id in planning_problem.distribution_networks]
