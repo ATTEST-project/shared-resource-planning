@@ -301,9 +301,7 @@ def _build_model(network, params):
                 for s_m in model.scenarios_market:
                     for s_o in model.scenarios_operation:
                         for p in model.periods:
-                            if gen.status:
-                                #model.pg[g, s_m, s_o, p] = max(total_net_load[s_o]['p'][p] * share_pg, pg_ub)
-                                #model.qg[g, s_m, s_o, p] = max(total_net_load[s_o]['q'][p] * share_qg, qg_ub)
+                            if gen.status[p] == 1:
                                 model.pg[g, s_m, s_o, p] = (pg_ub + pg_lb) * 0.50
                                 model.qg[g, s_m, s_o, p] = (qg_ub + qg_lb) * 0.50
                                 model.pg[g, s_m, s_o, p].setlb(pg_lb)
@@ -1395,11 +1393,11 @@ def _read_network_operational_data_from_file(network, filename):
             data['generation']['pg'][i] = pg_scenario
             data['generation']['qg'][i] = qg_scenario
 
-    # Generators status
+    # Generators status. Note: common to all scenarios
     gen_status = _get_generator_status_from_excel_file(filename, f'GenStatus, {network.day}')
     if not gen_status:
-        for i in range(len(network.generators)):
-            gen_status.append([1 for _ in range(network.num_instants)])
+        for g in range(len(network.generators)):
+            gen_status.append([network.generators[g].status for _ in range(network.num_instants)])
     data['generation']['status'] = gen_status
 
     # Flexibility data
@@ -1490,7 +1488,6 @@ def _get_generator_status_from_excel_file(filename, sheet_name):
     return status_values
 
 
-
 def _update_network_with_excel_data(network, data):
 
     for node in network.nodes:
@@ -1518,6 +1515,7 @@ def _update_network_with_excel_data(network, data):
         generator.pg = dict()  # Note: Changes Pg and Qg fields to dicts (per scenario)
         generator.qg = dict()
 
+        # Active and Reactive power
         for s in range(len(network.prob_operation_scenarios)):
             if generator.gen_type in GEN_CURTAILLABLE_TYPES:
                 pg = _get_generation_from_data(data, node_id, network.num_instants, s, DATA_ACTIVE_POWER)
@@ -1527,6 +1525,9 @@ def _update_network_with_excel_data(network, data):
             else:
                 generator.pg[s] = [0.00 for _ in range(network.num_instants)]
                 generator.qg[s] = [0.00 for _ in range(network.num_instants)]
+
+        # Status
+        generator.status = data['generation']['status'][g]
 
     network.data_loaded = True
 

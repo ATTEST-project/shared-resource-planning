@@ -671,7 +671,7 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                                 sheet.write(row_idx, 7, s_o)
                                 for p in range(network.num_instants):
                                     pg_net = results[year][day][s_m][s_o]['generation']['pg_net'][g][p]
-                                    sheet.write(row_idx, p + 10, pg_net, decimal_style)
+                                    sheet.write(row_idx, p + 8, pg_net, decimal_style)
                                     expected_pg_net[gen_id][p] += pg_net * omega_m * omega_s
                                 row_idx = row_idx + 1
 
