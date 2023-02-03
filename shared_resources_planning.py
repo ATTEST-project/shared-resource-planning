@@ -1571,7 +1571,7 @@ def _write_bound_evolution_to_excel(workbook, bound_evolution):
 # ======================================================================================================================
 def _write_operational_planning_results_to_excel(planning_problem, results, primal_evolution=list(), filename='operation_planning_results'):
 
-    wb = xlwt.Workbook()
+    wb = Workbook()
 
     _write_objective_function_values(wb, results)
     _write_shared_ess_specifications(wb, planning_problem.shared_ess_data)
@@ -1650,26 +1650,27 @@ def _write_objective_function_values(workbook, results):
 
 def _write_shared_ess_specifications(workbook, shared_ess_info):
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.000'
+    decimal_style = '0.000'
 
-    sheet = workbook.add_sheet('Shared ESS Specifications')
+    sheet = workbook.create_sheet('Shared ESS Specifications')
 
     # Write Header
-    row_idx = 0
-    sheet.write(0, 0, 'Year')
-    sheet.write(0, 1, 'Node ID')
-    sheet.write(0, 2, 'Sinst, [MVA]')
-    sheet.write(0, 3, 'Einst, [MVAh]')
+    row_idx = 1
+    sheet.cell(row=row_idx, column=1).value = 'Year'
+    sheet.cell(row=row_idx, column=2).value = 'Node ID'
+    sheet.cell(row=row_idx, column=3).value = 'Sinst, [MVA]'
+    sheet.cell(row=row_idx, column=4).value = 'Einst, [MVAh]'
 
     # Write Shared ESS specifications
     for year in shared_ess_info.years:
         for shared_ess in shared_ess_info.shared_energy_storages[year]:
             row_idx = row_idx + 1
-            sheet.write(row_idx, 0, year)
-            sheet.write(row_idx, 1, shared_ess.bus)
-            sheet.write(row_idx, 2, shared_ess.s, decimal_style)
-            sheet.write(row_idx, 3, shared_ess.e, decimal_style)
+            sheet.cell(row=row_idx, column=1).value = year
+            sheet.cell(row=row_idx, column=2).value = shared_ess.bus
+            sheet.cell(row=row_idx, column=3).value = shared_ess.s
+            sheet.cell(row=row_idx, column=3).number_format = decimal_style
+            sheet.cell(row=row_idx, column=4).value = shared_ess.e
+            sheet.cell(row=row_idx, column=4).number_format = decimal_style
 
 
 def _write_objective_function_evolution_to_excel(workbook, primal_evolution):
