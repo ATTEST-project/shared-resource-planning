@@ -1,5 +1,6 @@
 import os
 import xlwt
+from openpyxl import Workbook
 from definitions import *
 from network import Network, run_smopf
 from network_parameters import NetworkParameters
@@ -40,7 +41,6 @@ class NetworkPlanning:
         for year in self.years:
             results[year] = dict()
             for day in self.days:
-                #print(f'[INFO] - Running S-MOPF. Network {model[year][day]}...')
                 results[year][day] = run_smopf(model[year][day], self.params.solver_params, from_warm_start=from_warm_start)
         return results
 
@@ -147,7 +147,7 @@ def _get_objective_function_value(network_planning, models):
 
 def _write_optimization_results_to_excel(network_planning, data_dir, processed_results):
 
-    wb = xlwt.Workbook()
+    wb = Workbook(write_only=True)
 
     _write_main_info_to_excel(network_planning, wb, processed_results)
     if network_planning.params.obj_type == OBJ_MIN_COST:
@@ -176,7 +176,7 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
 
 def _write_main_info_to_excel(network_planning, workbook, results):
 
-    sheet = workbook.add_sheet('Main Info')
+    sheet = workbook.create_sheet('Main Info')
 
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
@@ -185,14 +185,14 @@ def _write_main_info_to_excel(network_planning, workbook, results):
     # Write Header
     col_idx = 1
     for year in network_planning.years:
-        for day in network_planning.days:
-            sheet.write(line_idx, col_idx, year)
+        for _ in network_planning.days:
+            sheet.cell(line_idx, col_idx).value = year
             col_idx += 1
     col_idx = 1
     line_idx += 1
-    for year in network_planning.years:
+    for _ in network_planning.years:
         for day in network_planning.days:
-            sheet.write(line_idx, col_idx, day)
+            sheet.cell(line_idx, col_idx).value = day
             col_idx += 1
     sheet.write(line_idx, col_idx, 'Total')
 
@@ -209,7 +209,9 @@ def _write_main_info_to_excel(network_planning, workbook, results):
     for year in network_planning.years:
         for day in network_planning.days:
             total_of += results['results'][year][day]['obj']
-            sheet.write(line_idx, col_idx, results['results'][year][day]['obj'], decimal_style)
+            #sheet.write(line_idx, col_idx, results['results'][year][day]['obj'], decimal_style)
+            sheet.write(line_idx, col_idx).value = results['results'][year][day]['obj']
+            sheet.write(line_idx, col_idx).number_format = decimal_style
             col_idx += 1
     sheet.write(line_idx, col_idx, total_of, decimal_style)
 
