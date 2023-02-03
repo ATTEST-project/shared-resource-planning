@@ -1278,10 +1278,10 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
     _write_ess_capacity_available_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['available'])
     _write_secondary_reserve_bands_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results['results'])
 
-    '''
     if bound_evolution:
         _write_bound_evolution_to_excel(wb, bound_evolution)
 
+    '''
     # Operational Planning Results
     if operational_planning_processed_results:
         _write_objective_function_values(wb, operational_planning_processed_results)
@@ -1533,36 +1533,38 @@ def _write_secondary_reserve_bands_to_excel(shared_ess_data, workbook, results):
 
 def _write_bound_evolution_to_excel(workbook, bound_evolution):
 
+    sheet = workbook.create_sheet('Convergence Characteristic')
+
     lower_bound = bound_evolution['lower_bound']
     upper_bound = bound_evolution['upper_bound']
     num_lines = max(len(upper_bound), max(lower_bound))
 
-    num_style = xlwt.XFStyle()
-    num_style.num_format_str = '0.00'
-    sheet = workbook.add_sheet('Convergence Characteristic')
+    num_style = '0.00'
 
     # Write header
-    line_idx = 0
-    sheet.write(line_idx, 0, 'Iteration')
-    sheet.write(line_idx, 1, 'Lower Bound, [NPV Mm.u.]')
-    sheet.write(line_idx, 2, 'Upper Bound, [NPV Mm.u.]')
+    line_idx = 1
+    sheet.cell(row=line_idx, column=1).value = 'Iteration'
+    sheet.cell(row=line_idx, column=2).value = 'Lower Bound, [NPV Mm.u.]'
+    sheet.cell(row=line_idx, column=3).value = 'Upper Bound, [NPV Mm.u.]'
 
     # Iterations
-    line_idx = 1
+    line_idx = 2
     for i in range(num_lines):
-        sheet.write(line_idx, 0, i)
+        sheet.cell(row=line_idx, column=1).value = i
         line_idx += 1
 
     # Lower bound
-    line_idx = 1
+    line_idx = 2
     for value in lower_bound:
-        sheet.write(line_idx, 1, value / 1e6, num_style)
+        sheet.cell(row=line_idx, column=2).value = value / 1e6
+        sheet.cell(row=line_idx, column=2).number_format = num_style
         line_idx += 1
 
     # Upper bound
-    line_idx = 1
+    line_idx = 2
     for value in upper_bound:
-        sheet.write(line_idx, 2, value / 1e6, num_style)
+        sheet.cell(row=line_idx, column=3).value = value / 1e6
+        sheet.cell(row=line_idx, column=3).number_format = num_style
         line_idx += 1
 
 
