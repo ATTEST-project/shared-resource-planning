@@ -1281,10 +1281,10 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
     if bound_evolution:
         _write_bound_evolution_to_excel(wb, bound_evolution)
 
-    '''
     # Operational Planning Results
     if operational_planning_processed_results:
         _write_objective_function_values(wb, operational_planning_processed_results)
+        '''
         _write_shared_energy_storages_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_interface_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results['interface'])
         _write_network_voltage_results_to_excel(planning_problem, wb, operational_planning_processed_results)
@@ -1294,7 +1294,7 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'ratio')
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'current_perc')
         _write_network_branch_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results)
-    '''
+        '''
 
     results_filename = os.path.join(planning_problem.results_dir, filename + '.xlsx')
     try:
@@ -1610,41 +1610,44 @@ def _write_operational_planning_results_to_excel(planning_problem, results, prim
 
 def _write_objective_function_values(workbook, results):
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.00'
+    sheet = workbook.create_sheet('OF Values')
 
-    sheet = workbook.add_sheet('OF Values')
+    decimal_style = '0.00'
 
     # Write Header
-    row_idx = 0
-    col_idx = 0
-    sheet.write(0, col_idx, 'Agent')
+    row_idx = 1
+    col_idx = 1
+    sheet.cell(row=row_idx, column=col_idx).value = 'Agent'
     col_idx += 1
     for year in results['tso']['results']:
         for day in results['tso']['results'][year]:
-            sheet.write(row_idx, col_idx, f'{year}, {day}, [m.u.]')
+            sheet.cell(row=row_idx, column=col_idx).value = f'{year}, {day}, [m.u.]'
             col_idx += 1
-    sheet.write(row_idx, col_idx, 'Total, [NPV Mm.u.]')
+    sheet.cell(row=row_idx, column=col_idx).value = 'Total, [NPV Mm.u.]'
 
     row_idx = row_idx + 1
-    col_idx = 0
-    sheet.write(row_idx, col_idx, 'ESSO')
+    col_idx = 1
+    sheet.cell(row=row_idx, column=col_idx).value = 'ESSO'
     col_idx += 1
     for year in results['esso']['results']:
         for day in results['esso']['results'][year]:
-            sheet.write(row_idx, col_idx, results['esso']['results'][year][day]['obj'], decimal_style)
+            sheet.cell(row=row_idx, column=col_idx).value = results['esso']['results'][year][day]['obj']
+            sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
             col_idx += 1
-    sheet.write(row_idx, col_idx, results['esso']['of_value'] / 1e6, decimal_style)
+    sheet.cell(row=row_idx, column=col_idx).value = results['esso']['of_value'] / 1e6
+    sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
 
     row_idx = row_idx + 1
-    col_idx = 0
-    sheet.write(row_idx, col_idx, 'TSO')
+    col_idx = 1
+    sheet.cell(row=row_idx, column=col_idx).value = 'TSO'
     col_idx += 1
     for year in results['tso']['results']:
         for day in results['tso']['results'][year]:
-            sheet.write(row_idx, col_idx, results['tso']['results'][year][day]['obj'], decimal_style)
+            sheet.cell(row=row_idx, column=col_idx).value = results['tso']['results'][year][day]['obj']
+            sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
             col_idx += 1
-    sheet.write(row_idx, col_idx, results['tso']['of_value'] / 1e6, decimal_style)
+    sheet.cell(row=row_idx, column=col_idx).value = results['tso']['of_value'] / 1e6
+    sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
 
 
 def _write_shared_ess_specifications(workbook, shared_ess_info):
