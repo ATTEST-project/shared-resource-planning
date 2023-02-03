@@ -1,5 +1,5 @@
 import os
-import xlwt
+#import xlwt
 from openpyxl import Workbook
 from definitions import *
 from network import Network, run_smopf
@@ -150,9 +150,9 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
     wb = Workbook()
 
     _write_main_info_to_excel(network_planning, wb, processed_results)
-    '''
     if network_planning.params.obj_type == OBJ_MIN_COST:
         _write_market_cost_values_to_excel(network_planning, wb)
+    '''
     _write_network_voltage_results_to_excel(network_planning, wb, processed_results['results'])
     _write_network_consumption_results_to_excel(network_planning, wb, processed_results['results'])
     _write_network_generation_results_to_excel(network_planning, wb, processed_results['results'])
@@ -178,10 +178,10 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
 
 def _write_main_info_to_excel(network_planning, workbook, results):
 
-    sheet = workbook.create_sheet('Main Info')
+    sheet = workbook.worksheets[0]
+    sheet.title = 'Main Info'
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.00'
+    decimal_style = '0.00'
     line_idx = 1
 
     # Write Header
@@ -190,7 +190,7 @@ def _write_main_info_to_excel(network_planning, workbook, results):
         for _ in network_planning.days:
             sheet.cell(row=line_idx, column=col_idx).value = year
             col_idx += 1
-    col_idx = 1
+    col_idx = 2
     line_idx += 1
     for _ in network_planning.years:
         for day in network_planning.days:
@@ -199,7 +199,7 @@ def _write_main_info_to_excel(network_planning, workbook, results):
     sheet.cell(row=line_idx, column=col_idx).value = 'Total'
 
     # Objective function value
-    col_idx = 1
+    col_idx = 2
     line_idx += 1
     total_of = 0.0
     obj_string = 'Objective'
@@ -207,67 +207,67 @@ def _write_main_info_to_excel(network_planning, workbook, results):
         obj_string += ' (cost), [€]'
     elif network_planning.params.obj_type == OBJ_CONGESTION_MANAGEMENT:
         obj_string += ' (congestion management)'
-    sheet.write(line_idx, 0, obj_string)
+    sheet.cell(row=line_idx, column=1).value = obj_string
     for year in network_planning.years:
         for day in network_planning.days:
             total_of += results['results'][year][day]['obj']
-            #sheet.write(line_idx, col_idx, results['results'][year][day]['obj'], decimal_style)
-            sheet.write(line_idx, col_idx).value = results['results'][year][day]['obj']
-            sheet.write(line_idx, col_idx).number_format = decimal_style
+            sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['obj']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
             col_idx += 1
-    sheet.write(line_idx, col_idx, total_of, decimal_style)
+    sheet.cell(row=line_idx, column=col_idx).value = total_of
+    sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
 
     # Execution time
-    col_idx = 1
+    col_idx = 2
     line_idx += 1
     total_runtime = 0.0
-    sheet.write(line_idx, 0, 'Execution time, [s]')
+    sheet.cell(row=line_idx, column=1).value = 'Execution time, [s]'
     for year in network_planning.years:
         for day in network_planning.days:
             total_runtime += results['results'][year][day]['runtime'][0]
-            sheet.write(line_idx, col_idx, results['results'][year][day]['runtime'][0], decimal_style)
+            sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['runtime'][0]
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
             col_idx += 1
-    sheet.write(line_idx, col_idx, total_runtime, decimal_style)
+    sheet.cell(row=line_idx, column=col_idx).value = total_runtime
+    sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
 
     # Number of price (market) scenarios
-    col_idx = 1
+    col_idx = 2
     line_idx += 1
-    sheet.write(line_idx, 0, 'Number of market scenarios')
+    sheet.cell(row=line_idx, column=1).value = 'Number of market scenarios'
     for year in network_planning.years:
         for day in network_planning.days:
-            sheet.write(line_idx, col_idx, len(network_planning.network[year][day].prob_market_scenarios))
+            sheet.cell(row=line_idx, column=col_idx).value = len(network_planning.network[year][day].prob_market_scenarios)
             col_idx += 1
-    sheet.write(line_idx, col_idx, 'N/A')
+    sheet.cell(row=line_idx, column=col_idx).value = 'N/A'
 
     # Number of operation (generation and consumption) scenarios
-    col_idx = 1
+    col_idx = 2
     line_idx += 1
-    sheet.write(line_idx, 0, 'Number of operation scenarios')
+    sheet.cell(row=line_idx, column=1).value = 'Number of operation scenarios'
     for year in network_planning.years:
         for day in network_planning.days:
-            sheet.write(line_idx, col_idx, len(network_planning.network[year][day].prob_operation_scenarios))
+            sheet.cell(row=line_idx, column=col_idx).value = len(network_planning.network[year][day].prob_operation_scenarios)
             col_idx += 1
-    sheet.write(line_idx, col_idx, 'N/A')
+    sheet.cell(row=line_idx, column=col_idx).value = 'N/A'
 
 
 def _write_market_cost_values_to_excel(network_planning, workbook):
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.000'
-    perc_style = xlwt.XFStyle()
-    perc_style.num_format_str = '0.00%'
+    decimal_style = '0.00'
+    perc_style = '0.00%'
 
-    line_idx = 0
-    sheet = workbook.add_sheet('Market Cost Info')
+    line_idx = 1
+    sheet = workbook.create_sheet('Market Cost Info')
 
     # Write Header
-    sheet.write(line_idx, 0, 'Cost')
-    sheet.write(line_idx, 1, 'Year')
-    sheet.write(line_idx, 2, 'Day')
-    sheet.write(line_idx, 3, 'Scenario')
-    sheet.write(line_idx, 4, 'Probability, [%]')
+    sheet.cell(row=line_idx, column=1).value = 'Cost'
+    sheet.cell(row=line_idx, column=2).value = 'Year'
+    sheet.cell(row=line_idx, column=3).value = 'Day'
+    sheet.cell(row=line_idx, column=4).value = 'Scenario'
+    sheet.cell(row=line_idx, column=5).value = 'Probability, [%]'
     for p in range(network_planning.num_instants):
-        sheet.write(line_idx, p + 5, p)
+        sheet.cell(row=line_idx, column=p + 6).value = p
 
     # Write active and reactive power costs per scenario
     for year in network_planning.years:
@@ -275,13 +275,15 @@ def _write_market_cost_values_to_excel(network_planning, workbook):
             network = network_planning.network[year][day]
             for s_o in range(len(network.prob_market_scenarios)):
                 line_idx += 1
-                sheet.write(line_idx, 0, 'Active power, [€/MW]')
-                sheet.write(line_idx, 1, year)
-                sheet.write(line_idx, 2, day)
-                sheet.write(line_idx, 3, s_o)
-                sheet.write(line_idx, 4, network.prob_market_scenarios[s_o], perc_style)
+                sheet.cell(row=line_idx, column=1).value= 'Active power, [€/MW]'
+                sheet.cell(row=line_idx, column=2).value= year
+                sheet.cell(row=line_idx, column=3).value= day
+                sheet.cell(row=line_idx, column=4).value= s_o
+                sheet.cell(row=line_idx, column=5).value= network.prob_market_scenarios[s_o]
+                sheet.cell(row=line_idx, column=5).number_format = perc_style
                 for p in range(network.num_instants):
-                    sheet.write(line_idx, p + 5, network.cost_energy_p[s_o][p], decimal_style)
+                    sheet.cell(row=line_idx, column=p + 6).value= network.cost_energy_p[s_o][p]
+                    sheet.cell(row=line_idx, column=p + 6).number_format = decimal_style
 
 
 def _write_network_voltage_results_to_excel(network_planning, workbook, results):
