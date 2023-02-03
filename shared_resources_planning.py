@@ -1485,12 +1485,12 @@ def _write_secondary_reserve_bands_to_excel(shared_ess_data, workbook, results):
     repr_days = [day for day in shared_ess_data.days]
 
     # Write Header
-    line_idx = 0
-    sheet.write(line_idx, 0, 'Year')
-    sheet.write(line_idx, 1, 'Day')
-    sheet.write(line_idx, 2, 'Type')
+    line_idx = 1
+    sheet.cell(row=line_idx, column=1).value = 'Year'
+    sheet.cell(row=line_idx, column=2).value = 'Day'
+    sheet.cell(row=line_idx, column=3).value = 'Type'
     for p in range(shared_ess_data.num_instants):
-        sheet.write(0, p + 3, p)
+        sheet.cell(row=line_idx, column=p + 4).value = p
 
     for y in range(len(shared_ess_data.years)):
         year = repr_years[y]
@@ -1514,19 +1514,21 @@ def _write_secondary_reserve_bands_to_excel(shared_ess_data, workbook, results):
 
             # Upward reserve - per day
             line_idx += 1
-            sheet.write(line_idx, 0, int(year))
-            sheet.write(line_idx, 1, day)
-            sheet.write(line_idx, 2, 'Upward, [MW]')
+            sheet.cell(row=line_idx, column=1).value = int(year)
+            sheet.cell(row=line_idx, column=2).value = day
+            sheet.cell(row=line_idx, column=3).value = 'Upward, [MW]'
             for p in range(shared_ess_data.num_instants):
-                sheet.write(line_idx, p + 3, pup_total[p], num_style)
+                sheet.cell(row=line_idx, column=p + 4).value = pup_total[p]
+                sheet.cell(row=line_idx, column=p + 4).number_format = num_style
 
             # Downward reserve - per day
             line_idx += 1
-            sheet.write(line_idx, 0, int(year))
-            sheet.write(line_idx, 1, day)
-            sheet.write(line_idx, 2, 'Downward, [MW]')
+            sheet.cell(row=line_idx, column=1).value = int(year)
+            sheet.cell(row=line_idx, column=2).value = day
+            sheet.cell(row=line_idx, column=3).value = 'Downward, [MW]'
             for p in range(shared_ess_data.num_instants):
-                sheet.write(line_idx, p + 3, -pdown_total[p], num_style)
+                sheet.cell(row=line_idx, column=p + 4).value = -pdown_total[p]
+                sheet.cell(row=line_idx, column=p + 4).number_format = num_style
 
 
 def _write_bound_evolution_to_excel(workbook, bound_evolution):
