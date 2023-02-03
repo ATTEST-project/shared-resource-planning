@@ -312,6 +312,8 @@ def _run_operational_planning(planning_problem, candidate_solution):
     sensitivities = shared_ess_data.get_sensitivities(esso_model)
     optim_models = {'tso': tso_model, 'dso': dso_models, 'esso': esso_model}
 
+    planning_problem.write_operational_planning_results_to_excel(tso_model, dso_models, esso_model, results, primal_evolution)
+
     return results, sensitivities, optim_models
 
 
@@ -1583,7 +1585,7 @@ def _write_operational_planning_results_to_excel(planning_problem, results, prim
     _write_interface_power_flow_results_to_excel(planning_problem, wb, results['interface'])
 
     # Shared Energy Storages results
-    _write_shared_energy_storages_results_to_excel(planning_problem, wb, results['esso']['results'])
+    _write_shared_energy_storages_results_to_excel(planning_problem, wb, results)
 
     #  TSO and DSOs' results
     _write_network_voltage_results_to_excel(planning_problem, wb, results)
@@ -1594,21 +1596,22 @@ def _write_operational_planning_results_to_excel(planning_problem, results, prim
     _write_network_branch_results_to_excel(planning_problem, wb, results, 'current_perc')
 
     # Save results
-    results_filename = os.path.join(planning_problem.results_dir, filename + '.xls')
+    results_filename = os.path.join(planning_problem.results_dir, filename + '.xlsx')
     try:
         wb.save(results_filename)
     except:
         from datetime import datetime
         now = datetime.now()
         current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
-        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xls')
-        print(f"[WARNING] Couldn't write to file {filename}.xls. Results saved to file {backup_filename}.xls")
+        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xlsx')
+        print(f"[WARNING] Couldn't write to file {results_filename}. Results saved to file {backup_filename}.xlsx")
         wb.save(backup_filename)
 
 
 def _write_objective_function_values(workbook, results):
 
-    sheet = workbook.create_sheet('OF Values')
+    sheet = workbook.worksheets[0]
+    sheet.title = 'OF Values'
 
     decimal_style = '0.00'
 
@@ -1650,9 +1653,9 @@ def _write_objective_function_values(workbook, results):
 
 def _write_shared_ess_specifications(workbook, shared_ess_info):
 
-    decimal_style = '0.000'
-
     sheet = workbook.create_sheet('Shared ESS Specifications')
+
+    decimal_style = '0.000'
 
     # Write Header
     row_idx = 1
@@ -1675,18 +1678,21 @@ def _write_shared_ess_specifications(workbook, shared_ess_info):
 
 def _write_objective_function_evolution_to_excel(workbook, primal_evolution):
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.000000'
+    sheet = workbook.create_sheet('Primal Evolution')
 
-    sheet = workbook.add_sheet('Primal Evolution')
+    decimal_style = '0.000000'
+    row_idx = 1
 
     # Write Header
-    sheet.write(0, 0, 'Iteration')
-    sheet.write(0, 1, 'OF value')
-    row_idx = 1
+    sheet.cell(row=row_idx, column=1).value = 'Iteration'
+    sheet.cell(row=row_idx, column=2).value = 'OF value'
+    row_idx = row_idx + 1
     for i in range(len(primal_evolution)):
-        sheet.write(row_idx, 0, i)
-        sheet.write(row_idx, 1, primal_evolution[i], decimal_style)
+        sheet.cell(row=row_idx, column=1).value = i
+        sheet.cell(row=row_idx, column=2).value = primal_evolution[i]
+        sheet.cell(row=row_idx, column=2).number_format = decimal_style
+        sheet.cell(row=row_idx, column=2).value = primal_evolution[i]
+        sheet.cell(row=row_idx, column=2).number_format = decimal_style
         row_idx = row_idx + 1
 
 
