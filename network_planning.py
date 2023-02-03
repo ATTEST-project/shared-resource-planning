@@ -147,9 +147,10 @@ def _get_objective_function_value(network_planning, models):
 
 def _write_optimization_results_to_excel(network_planning, data_dir, processed_results):
 
-    wb = Workbook(write_only=True)
+    wb = Workbook()
 
     _write_main_info_to_excel(network_planning, wb, processed_results)
+    '''
     if network_planning.params.obj_type == OBJ_MIN_COST:
         _write_market_cost_values_to_excel(network_planning, wb)
     _write_network_voltage_results_to_excel(network_planning, wb, processed_results['results'])
@@ -160,8 +161,9 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'current_perc')
     _write_network_branch_power_flow_results_to_excel(network_planning, wb, processed_results['results'])
     _write_network_energy_storage_results_to_excel(network_planning, wb, processed_results['results'])
+    '''
 
-    results_filename = os.path.join(data_dir, f'{network_planning.name}_results.xls')
+    results_filename = os.path.join(data_dir, f'{network_planning.name}_results.xlsx')
     try:
         wb.save(results_filename)
         print('[INFO] S-MPOPF Results written to {}.'.format(results_filename))
@@ -180,21 +182,21 @@ def _write_main_info_to_excel(network_planning, workbook, results):
 
     decimal_style = xlwt.XFStyle()
     decimal_style.num_format_str = '0.00'
-    line_idx = 0
+    line_idx = 1
 
     # Write Header
-    col_idx = 1
+    col_idx = 2
     for year in network_planning.years:
         for _ in network_planning.days:
-            sheet.cell(line_idx, col_idx).value = year
+            sheet.cell(row=line_idx, column=col_idx).value = year
             col_idx += 1
     col_idx = 1
     line_idx += 1
     for _ in network_planning.years:
         for day in network_planning.days:
-            sheet.cell(line_idx, col_idx).value = day
+            sheet.cell(row=line_idx, column=col_idx).value = day
             col_idx += 1
-    sheet.write(line_idx, col_idx, 'Total')
+    sheet.cell(row=line_idx, column=col_idx).value = 'Total'
 
     # Objective function value
     col_idx = 1
