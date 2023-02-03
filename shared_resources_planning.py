@@ -1285,8 +1285,8 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
     if operational_planning_processed_results:
         _write_objective_function_values(wb, operational_planning_processed_results)
         _write_shared_energy_storages_results_to_excel(planning_problem, wb, operational_planning_processed_results)
-        '''
         _write_interface_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results['interface'])
+        '''
         _write_network_voltage_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_network_consumption_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_network_generation_results_to_excel(planning_problem, wb, operational_planning_processed_results)
@@ -1693,21 +1693,21 @@ def _write_objective_function_evolution_to_excel(workbook, primal_evolution):
 
 def _write_interface_power_flow_results_to_excel(planning_problem, workbook, results):
 
-    row_idx = 0
-    sheet = workbook.add_sheet('Interface PF')
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.00'
+    sheet = workbook.create_sheet('Interface PF')
+
+    row_idx = 1
+    decimal_style = '0.00'
 
     # Write Header
-    sheet.write(row_idx, 0, 'Node ID')
-    sheet.write(row_idx, 1, 'Operator')
-    sheet.write(row_idx, 2, 'Year')
-    sheet.write(row_idx, 3, 'Day')
-    sheet.write(row_idx, 4, 'Quantity')
-    sheet.write(row_idx, 5, 'Market Scenario')
-    sheet.write(row_idx, 6, 'Operation Scenario')
+    sheet.cell(row=row_idx, column=1).value = 'Node ID'
+    sheet.cell(row=row_idx, column=2).value = 'Operator'
+    sheet.cell(row=row_idx, column=3).value = 'Year'
+    sheet.cell(row=row_idx, column=4).value = 'Day'
+    sheet.cell(row=row_idx, column=5).value = 'Quantity'
+    sheet.cell(row=row_idx, column=6).value = 'Market Scenario'
+    sheet.cell(row=row_idx, column=7).value = 'Operation Scenario'
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 7, p)
+        sheet.cell(row=row_idx, column=p + 8).value = p
     row_idx = row_idx + 1
 
     # TSO's results
@@ -1722,55 +1722,59 @@ def _write_interface_power_flow_results_to_excel(planning_problem, workbook, res
                         omega_s = planning_problem.transmission_network.network[year][day].prob_operation_scenarios[s_o]
 
                         # Active Power
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, 'TSO')
-                        sheet.write(row_idx, 2, int(year))
-                        sheet.write(row_idx, 3, day)
-                        sheet.write(row_idx, 4, 'P, [MW]')
-                        sheet.write(row_idx, 5, s_m)
-                        sheet.write(row_idx, 6, s_o)
+                        sheet.cell(row=row_idx, column=1).value = node_id
+                        sheet.cell(row=row_idx, column=2).value = 'TSO'
+                        sheet.cell(row=row_idx, column=3).value = int(year)
+                        sheet.cell(row=row_idx, column=4).value = day
+                        sheet.cell(row=row_idx, column=5).value = 'P, [MW]'
+                        sheet.cell(row=row_idx, column=6).value = s_m
+                        sheet.cell(row=row_idx, column=7).value = s_o
                         for p in range(planning_problem.num_instants):
                             interface_p = results['tso'][year][day][node_id][s_m][s_o]['p'][p]
-                            sheet.write(row_idx, p + 7, interface_p, decimal_style)
+                            sheet.cell(row=row_idx, column=p + 8).value = interface_p
+                            sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                             expected_p[p] += interface_p * omega_m * omega_s
                         row_idx += 1
 
                         # Reactive Power
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, 'TSO')
-                        sheet.write(row_idx, 2, int(year))
-                        sheet.write(row_idx, 3, day)
-                        sheet.write(row_idx, 4, 'Q, [MVAr]')
-                        sheet.write(row_idx, 5, s_m)
-                        sheet.write(row_idx, 6, s_o)
+                        sheet.cell(row=row_idx, column=1).value = node_id
+                        sheet.cell(row=row_idx, column=2).value = 'TSO'
+                        sheet.cell(row=row_idx, column=3).value = int(year)
+                        sheet.cell(row=row_idx, column=4).value = day
+                        sheet.cell(row=row_idx, column=5).value = 'Q, [MVAr]'
+                        sheet.cell(row=row_idx, column=6).value = s_m
+                        sheet.cell(row=row_idx, column=7).value = s_o
                         for p in range(planning_problem.num_instants):
                             interface_q = results['tso'][year][day][node_id][s_m][s_o]['q'][p]
-                            sheet.write(row_idx, p + 7, interface_q, decimal_style)
+                            sheet.cell(row=row_idx, column=p + 8).value = interface_q
+                            sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                             expected_q[p] += interface_q * omega_m * omega_s
                         row_idx += 1
 
                 # Expected Active Power
-                sheet.write(row_idx, 0, node_id)
-                sheet.write(row_idx, 1, 'TSO')
-                sheet.write(row_idx, 2, int(year))
-                sheet.write(row_idx, 3, day)
-                sheet.write(row_idx, 4, 'P, [MW]')
-                sheet.write(row_idx, 5, 'Expected')
-                sheet.write(row_idx, 6, '-')
+                sheet.cell(row=row_idx, column=1).value = node_id
+                sheet.cell(row=row_idx, column=2).value = 'TSO'
+                sheet.cell(row=row_idx, column=3).value = int(year)
+                sheet.cell(row=row_idx, column=4).value = day
+                sheet.cell(row=row_idx, column=5).value = 'P, [MW]'
+                sheet.cell(row=row_idx, column=6).value = 'Expected'
+                sheet.cell(row=row_idx, column=7).value = '-'
                 for p in range(planning_problem.num_instants):
-                    sheet.write(row_idx, p + 7, expected_p[p], decimal_style)
+                    sheet.cell(row=row_idx, column=p + 8).value = expected_p[p]
+                    sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                 row_idx += 1
 
                 # Expected Reactive Power
-                sheet.write(row_idx, 0, node_id)
-                sheet.write(row_idx, 1, 'TSO')
-                sheet.write(row_idx, 2, int(year))
-                sheet.write(row_idx, 3, day)
-                sheet.write(row_idx, 4, 'Q, [MVAr]')
-                sheet.write(row_idx, 5, 'Expected')
-                sheet.write(row_idx, 6, '-')
+                sheet.cell(row=row_idx, column=1).value = node_id
+                sheet.cell(row=row_idx, column=2).value = 'TSO'
+                sheet.cell(row=row_idx, column=3).value = int(year)
+                sheet.cell(row=row_idx, column=4).value = day
+                sheet.cell(row=row_idx, column=5).value = 'Q, [MVAr]'
+                sheet.cell(row=row_idx, column=6).value = 'Expected'
+                sheet.cell(row=row_idx, column=7).value = '-'
                 for p in range(planning_problem.num_instants):
-                    sheet.write(row_idx, p + 7, expected_q[p], decimal_style)
+                    sheet.cell(row=row_idx, column=p + 8).value = expected_q[p]
+                    sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                 row_idx += 1
 
     # DSOs' results
@@ -1785,55 +1789,59 @@ def _write_interface_power_flow_results_to_excel(planning_problem, workbook, res
                         omega_s = planning_problem.distribution_networks[node_id].network[year][day].prob_operation_scenarios[s_o]
 
                         # Active Power
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, 'DSO')
-                        sheet.write(row_idx, 2, int(year))
-                        sheet.write(row_idx, 3, day)
-                        sheet.write(row_idx, 4, 'P, [MW]')
-                        sheet.write(row_idx, 5, s_m)
-                        sheet.write(row_idx, 6, s_o)
+                        sheet.cell(row=row_idx, column=1).value = node_id
+                        sheet.cell(row=row_idx, column=2).value = 'DSO'
+                        sheet.cell(row=row_idx, column=3).value = int(year)
+                        sheet.cell(row=row_idx, column=4).value = day
+                        sheet.cell(row=row_idx, column=5).value = 'P, [MW]'
+                        sheet.cell(row=row_idx, column=6).value = s_m
+                        sheet.cell(row=row_idx, column=7).value = s_o
                         for p in range(planning_problem.num_instants):
                             interface_p = results['dso'][node_id][year][day][s_m][s_o]['p'][p]
-                            sheet.write(row_idx, p + 7, interface_p, decimal_style)
+                            sheet.cell(row=row_idx, column=p + 8).value = interface_p
+                            sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                             expected_p[p] += interface_p * omega_m * omega_s
                         row_idx += 1
 
                         # Reactive Power
-                        sheet.write(row_idx, 0, node_id)
-                        sheet.write(row_idx, 1, 'DSO')
-                        sheet.write(row_idx, 2, int(year))
-                        sheet.write(row_idx, 3, day)
-                        sheet.write(row_idx, 4, 'Q, [MVAr]')
-                        sheet.write(row_idx, 5, s_m)
-                        sheet.write(row_idx, 6, s_o)
+                        sheet.cell(row=row_idx, column=1).value = node_id
+                        sheet.cell(row=row_idx, column=2).value = 'DSO'
+                        sheet.cell(row=row_idx, column=3).value = int(year)
+                        sheet.cell(row=row_idx, column=4).value = day
+                        sheet.cell(row=row_idx, column=5).value = 'Q, [MVAr]'
+                        sheet.cell(row=row_idx, column=6).value = s_m
+                        sheet.cell(row=row_idx, column=7).value = s_o
                         for p in range(len(results['dso'][node_id][year][day][s_m][s_o]['q'])):
                             interface_q = results['dso'][node_id][year][day][s_m][s_o]['q'][p]
-                            sheet.write(row_idx, p + 7, interface_q, decimal_style)
+                            sheet.cell(row=row_idx, column=p + 8).value = interface_q
+                            sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                             expected_q[p] += interface_q * omega_m * omega_s
                         row_idx += 1
 
                 # Expected Active Power
-                sheet.write(row_idx, 0, node_id)
-                sheet.write(row_idx, 1, 'DSO')
-                sheet.write(row_idx, 2, int(year))
-                sheet.write(row_idx, 3, day)
-                sheet.write(row_idx, 4, 'P, [MW]')
-                sheet.write(row_idx, 5, 'Expected')
-                sheet.write(row_idx, 6, '-')
+                sheet.cell(row=row_idx, column=1).value = node_id
+                sheet.cell(row=row_idx, column=2).value = 'DSO'
+                sheet.cell(row=row_idx, column=3).value = int(year)
+                sheet.cell(row=row_idx, column=4).value = day
+                sheet.cell(row=row_idx, column=5).value = 'P, [MW]'
+                sheet.cell(row=row_idx, column=6).value = 'Expected'
+                sheet.cell(row=row_idx, column=7).value = '-'
                 for p in range(planning_problem.num_instants):
-                    sheet.write(row_idx, p + 7, expected_p[p], decimal_style)
+                    sheet.cell(row=row_idx, column=p + 8).value = expected_p[p]
+                    sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                 row_idx += 1
 
                 # Expected Reactive Power
-                sheet.write(row_idx, 0, node_id)
-                sheet.write(row_idx, 1, 'DSO')
-                sheet.write(row_idx, 2, int(year))
-                sheet.write(row_idx, 3, day)
-                sheet.write(row_idx, 4, 'Q, [MVAr]')
-                sheet.write(row_idx, 5, 'Expected')
-                sheet.write(row_idx, 6, '-')
+                sheet.cell(row=row_idx, column=1).value = node_id
+                sheet.cell(row=row_idx, column=2).value = 'DSO'
+                sheet.cell(row=row_idx, column=3).value = int(year)
+                sheet.cell(row=row_idx, column=4).value = day
+                sheet.cell(row=row_idx, column=5).value = 'Q, [MVAr]'
+                sheet.cell(row=row_idx, column=6).value = 'Expected'
+                sheet.cell(row=row_idx, column=7).value = '-'
                 for p in range(len(results['dso'][node_id][year][day][s_m][s_o]['q'])):
-                    sheet.write(row_idx, p + 7, expected_q[p], decimal_style)
+                    sheet.cell(row=row_idx, column=p + 8).value = expected_q[p]
+                    sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
                 row_idx += 1
 
 
