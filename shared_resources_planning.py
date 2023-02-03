@@ -1,6 +1,6 @@
 import os
 import time
-import xlwt
+from openpyxl import Workbook
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -1270,10 +1270,11 @@ def _process_results_interface_power_flow(planning_problem, tso_model, dso_model
 # ======================================================================================================================
 def _write_planning_results_to_excel(planning_problem, shared_ess_processed_results, shared_ess_capacity, operational_planning_processed_results=dict(), bound_evolution=dict(), filename='planing_results'):
 
-    wb = xlwt.Workbook()
+    wb = Workbook()
 
     # Planning results
     _write_main_info_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results)
+    '''
     _write_ess_capacity_investment_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['investment'])
     _write_ess_capacity_available_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['available'])
     _write_secondary_reserve_bands_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results['results'])
@@ -1293,8 +1294,9 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'ratio')
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'current_perc')
         _write_network_branch_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results)
+    '''
 
-    results_filename = os.path.join(planning_problem.results_dir, filename + '.xls')
+    results_filename = os.path.join(planning_problem.results_dir, filename + '.xlsx')
     try:
         wb.save(results_filename)
         print(f'[INFO] ESS Optimization Results written to {results_filename}.')
@@ -1302,47 +1304,49 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
         from datetime import datetime
         now = datetime.now()
         current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
-        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xls')
+        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xlsx')
         print(f'[INFO] ESS Optimization Results written to {backup_filename}.')
         wb.save(backup_filename)
 
 
 def _write_main_info_to_excel(shared_ess_data, workbook, results):
 
-    sheet = workbook.add_sheet('Main Info')
+    sheet = workbook.worksheets[0]
+    sheet.title = 'Main Info'
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.00'
+    decimal_style = '0.00'
 
     # Objective function value
-    line = 0
-    sheet.write(line, 0, 'Objective (cost) [Mm.u.]')
-    sheet.write(line, 1, results['of_value'] / 1e6, decimal_style)
+    line = 1
+    sheet.cell(row=line, column=1).value = 'Objective (cost) [Mm.u.]'
+    sheet.cell(row=line, column=2).value = results['of_value'] / 1e6
+    sheet.cell(row=line, column=2).number_format = decimal_style
 
     # Execution time
     line += 1
-    sheet.write(line, 0, 'Execution time, [s]')
-    sheet.write(line, 1, results['runtime'], decimal_style)
+    sheet.cell(row=line, column=1).value = 'Execution time, [s]'
+    sheet.cell(row=line, column=2).value = results['runtime']
+    sheet.cell(row=line, column=2).number_format = decimal_style
 
     # Number of years
     line += 1
-    sheet.write(line, 0, 'Number of years')
-    sheet.write(line, 1, len(shared_ess_data.years))
+    sheet.cell(row=line, column=1).value = 'Number of years'
+    sheet.cell(row=line, column=2).value = len(shared_ess_data.years)
 
     # Number of representative days
     line += 1
-    sheet.write(line, 0, 'Number of days')
-    sheet.write(line, 1, len(shared_ess_data.days))
+    sheet.cell(row=line, column=1).value = 'Number of days'
+    sheet.cell(row=line, column=2).value = len(shared_ess_data.days)
 
     # Number of price (market) scenarios
     line += 1
-    sheet.write(line, 0, 'Number of market scenarios')
-    sheet.write(line, 1, len(shared_ess_data.prob_market_scenarios))
+    sheet.cell(row=line, column=1).value = 'Number of market scenarios'
+    sheet.cell(row=line, column=2).value = len(shared_ess_data.prob_market_scenarios)
 
     # Number of operation (reserve activation) scenarios
     line += 1
-    sheet.write(line, 0, 'Number of operation scenarios (Shared ESS)')
-    sheet.write(line, 1, len(shared_ess_data.prob_operation_scenarios))
+    sheet.cell(row=line, column=1).value = 'Number of operation scenarios (Shared ESS)'
+    sheet.cell(row=line, column=2).value = len(shared_ess_data.prob_operation_scenarios)
 
 
 def _write_ess_capacity_investment_to_excel(shared_ess_data, workbook, results):
