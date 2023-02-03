@@ -1287,8 +1287,8 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
         _write_shared_energy_storages_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_interface_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results['interface'])
         _write_network_voltage_results_to_excel(planning_problem, wb, operational_planning_processed_results)
-        '''
         _write_network_consumption_results_to_excel(planning_problem, wb, operational_planning_processed_results)
+        '''
         _write_network_generation_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'losses')
         _write_network_branch_results_to_excel(planning_problem, wb, operational_planning_processed_results, 'ratio')
@@ -2401,20 +2401,21 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
 
 def _write_network_consumption_results_to_excel(planning_problem, workbook, results):
 
-    row_idx = 0
-    sheet = workbook.add_sheet('Consumption')
+    sheet = workbook.create_sheet('Consumption')
+
+    row_idx = 1
 
     # Write Header
-    sheet.write(row_idx, 0, 'Operator')
-    sheet.write(row_idx, 1, 'Connection Node ID')
-    sheet.write(row_idx, 2, 'Network Node ID')
-    sheet.write(row_idx, 3, 'Year')
-    sheet.write(row_idx, 4, 'Day')
-    sheet.write(row_idx, 5, 'Quantity')
-    sheet.write(row_idx, 6, 'Market Scenario')
-    sheet.write(row_idx, 7, 'Operation Scenario')
+    sheet.cell(row=row_idx, column=1).value = 'Operator'
+    sheet.cell(row=row_idx, column=2).value = 'Connection Node ID'
+    sheet.cell(row=row_idx, column=3).value = 'Network Node ID'
+    sheet.cell(row=row_idx, column=4).value = 'Year'
+    sheet.cell(row=row_idx, column=5).value = 'Day'
+    sheet.cell(row=row_idx, column=6).value = 'Quantity'
+    sheet.cell(row=row_idx, column=7).value = 'Market Scenario'
+    sheet.cell(row=row_idx, column=8).value = 'Operation Scenario'
     for p in range(planning_problem.num_instants):
-        sheet.write(0, p + 8, p + 0)
+        sheet.cell(row=row_idx, column=p + 9).value = p
     row_idx = row_idx + 1
 
     # Write results -- TSO
@@ -2433,9 +2434,7 @@ def _write_network_consumption_results_to_excel(planning_problem, workbook, resu
 
 def _write_network_consumption_results_per_operator(network, params, sheet, operator_type, row_idx, results, tn_node_id='-'):
 
-    decimal_style = xlwt.XFStyle()
-    decimal_style.num_format_str = '0.00'
-
+    decimal_style = '0.00'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     for year in results:
@@ -2463,98 +2462,104 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                         for node_id in results[year][day][s_m][s_o]['consumption']['pc']:
 
                             # - Active Power
-                            sheet.write(row_idx, 0, operator_type)
-                            sheet.write(row_idx, 1, tn_node_id)
-                            sheet.write(row_idx, 2, node_id)
-                            sheet.write(row_idx, 3, int(year))
-                            sheet.write(row_idx, 4, day)
-                            sheet.write(row_idx, 5, 'Pc, [MW]')
-                            sheet.write(row_idx, 6, s_m)
-                            sheet.write(row_idx, 7, s_o)
+                            sheet.cell(row=row_idx, column=1).value = operator_type
+                            sheet.cell(row=row_idx, column=2).value = tn_node_id
+                            sheet.cell(row=row_idx, column=3).value = node_id
+                            sheet.cell(row=row_idx, column=4).value = int(year)
+                            sheet.cell(row=row_idx, column=5).value = day
+                            sheet.cell(row=row_idx, column=6).value = 'Pc, [MW]'
+                            sheet.cell(row=row_idx, column=7).value = s_m
+                            sheet.cell(row=row_idx, column=8).value = s_o
                             for p in range(network[year][day].num_instants):
                                 pc = results[year][day][s_m][s_o]['consumption']['pc'][node_id][p]
-                                sheet.write(row_idx, p + 8, pc, decimal_style)
+                                sheet.cell(row=row_idx, column=p + 9).value = pc
+                                sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                 expected_pc[node_id][p] += pc * omega_m * omega_s
                             row_idx = row_idx + 1
 
                             if params.fl_reg:
 
                                 # - Flexibility, up
-                                sheet.write(row_idx, 0, operator_type)
-                                sheet.write(row_idx, 1, tn_node_id)
-                                sheet.write(row_idx, 2, node_id)
-                                sheet.write(row_idx, 3, int(year))
-                                sheet.write(row_idx, 4, day)
-                                sheet.write(row_idx, 5, 'Flex Up, [MW]')
-                                sheet.write(row_idx, 6, s_m)
-                                sheet.write(row_idx, 7, s_o)
+                                sheet.cell(row=row_idx, column=1).value = operator_type
+                                sheet.cell(row=row_idx, column=2).value = tn_node_id
+                                sheet.cell(row=row_idx, column=3).value = node_id
+                                sheet.cell(row=row_idx, column=4).value = int(year)
+                                sheet.cell(row=row_idx, column=5).value = day
+                                sheet.cell(row=row_idx, column=6).value = 'Flex Up, [MW]'
+                                sheet.cell(row=row_idx, column=7).value = s_m
+                                sheet.cell(row=row_idx, column=8).value = s_o
                                 for p in range(network[year][day].num_instants):
                                     flex = results[year][day][s_m][s_o]['consumption']['p_up'][node_id][p]
-                                    sheet.write(row_idx, p + 8, flex, decimal_style)
+                                    sheet.cell(row=row_idx, column=p + 9).value = flex
+                                    sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                     expected_flex_up[node_id][p] += flex * omega_m * omega_s
                                 row_idx = row_idx + 1
 
                                 # - Flexibility, down
-                                sheet.write(row_idx, 0, operator_type)
-                                sheet.write(row_idx, 1, tn_node_id)
-                                sheet.write(row_idx, 2, node_id)
-                                sheet.write(row_idx, 3, int(year))
-                                sheet.write(row_idx, 4, day)
-                                sheet.write(row_idx, 5, 'Flex Down, [MW]')
-                                sheet.write(row_idx, 6, s_m)
-                                sheet.write(row_idx, 7, s_o)
+                                sheet.cell(row=row_idx, column=1).value = operator_type
+                                sheet.cell(row=row_idx, column=2).value = tn_node_id
+                                sheet.cell(row=row_idx, column=3).value = node_id
+                                sheet.cell(row=row_idx, column=4).value = int(year)
+                                sheet.cell(row=row_idx, column=5).value = day
+                                sheet.cell(row=row_idx, column=6).value = 'Flex Down, [MW]'
+                                sheet.cell(row=row_idx, column=7).value = s_m
+                                sheet.cell(row=row_idx, column=8).value = s_o
                                 for p in range(network[year][day].num_instants):
                                     flex = results[year][day][s_m][s_o]['consumption']['p_down'][node_id][p]
-                                    sheet.write(row_idx, p + 8, flex, decimal_style)
+                                    sheet.cell(row=row_idx, column=p + 9).value = flex
+                                    sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                     expected_flex_down[node_id][p] += flex * omega_m * omega_s
                                 row_idx = row_idx + 1
 
                             if params.l_curt:
 
                                 # - Active power curtailment
-                                sheet.write(row_idx, 0, operator_type)
-                                sheet.write(row_idx, 1, tn_node_id)
-                                sheet.write(row_idx, 2, node_id)
-                                sheet.write(row_idx, 3, int(year))
-                                sheet.write(row_idx, 4, day)
-                                sheet.write(row_idx, 5, 'Pc_curt, [MW]')
-                                sheet.write(row_idx, 6, s_m)
-                                sheet.write(row_idx, 7, s_o)
+                                sheet.cell(row=row_idx, column=1).value = operator_type
+                                sheet.cell(row=row_idx, column=2).value = tn_node_id
+                                sheet.cell(row=row_idx, column=3).value = node_id
+                                sheet.cell(row=row_idx, column=4).value = int(year)
+                                sheet.cell(row=row_idx, column=5).value = day
+                                sheet.cell(row=row_idx, column=6).value = 'Pc_curt, [MW]'
+                                sheet.cell(row=row_idx, column=7).value = s_m
+                                sheet.cell(row=row_idx, column=8).value = s_o
                                 for p in range(network[year][day].num_instants):
                                     pc_curt = results[year][day][s_m][s_o]['consumption']['pc_curt'][node_id][p]
-                                    sheet.write(row_idx, p + 8, pc_curt, decimal_style)
+                                    sheet.cell(row=row_idx, column=p + 9).value = pc_curt
+                                    sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                     expected_pc_curt[node_id][p] += pc_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
                             if params.fl_reg or params.l_curt:
 
                                 # - Active power net consumption
-                                sheet.write(row_idx, 0, operator_type)
-                                sheet.write(row_idx, 1, tn_node_id)
-                                sheet.write(row_idx, 2, node_id)
-                                sheet.write(row_idx, 3, int(year))
-                                sheet.write(row_idx, 4, day)
-                                sheet.write(row_idx, 5, 'Pc_net, [MW]')
-                                sheet.write(row_idx, 6, s_m)
-                                sheet.write(row_idx, 7, s_o)
+                                sheet.cell(row=row_idx, column=1).value = operator_type
+                                sheet.cell(row=row_idx, column=2).value = tn_node_id
+                                sheet.cell(row=row_idx, column=3).value = node_id
+                                sheet.cell(row=row_idx, column=4).value = int(year)
+                                sheet.cell(row=row_idx, column=5).value = day
+                                sheet.cell(row=row_idx, column=6).value = 'Pc_net, [MW]'
+                                sheet.cell(row=row_idx, column=7).value = s_m
+                                sheet.cell(row=row_idx, column=8).value = s_o
                                 for p in range(network[year][day].num_instants):
                                     p_net = results[year][day][s_m][s_o]['consumption']['pc_net'][node_id][p]
-                                    sheet.write(row_idx, p + 8, p_net, decimal_style)
+                                    sheet.cell(row=row_idx, column=p + 9).value = p_net
+                                    sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                     expected_pnet[node_id][p] += p_net * omega_m * omega_s
                                 row_idx = row_idx + 1
 
                             # - Reactive power
-                            sheet.write(row_idx, 0, operator_type)
-                            sheet.write(row_idx, 1, tn_node_id)
-                            sheet.write(row_idx, 2, node_id)
-                            sheet.write(row_idx, 3, int(year))
-                            sheet.write(row_idx, 4, day)
-                            sheet.write(row_idx, 5, 'Qc, [MVAr]')
-                            sheet.write(row_idx, 6, s_m)
-                            sheet.write(row_idx, 7, s_o)
+                            sheet.cell(row=row_idx, column=1).value = operator_type
+                            sheet.cell(row=row_idx, column=2).value = tn_node_id
+                            sheet.cell(row=row_idx, column=3).value = node_id
+                            sheet.cell(row=row_idx, column=4).value = int(year)
+                            sheet.cell(row=row_idx, column=5).value = day
+                            sheet.cell(row=row_idx, column=6).value = 'Qc, [MVAr]'
+                            sheet.cell(row=row_idx, column=7).value = s_m
+                            sheet.cell(row=row_idx, column=8).value = s_o
                             for p in range(network[year][day].num_instants):
                                 qc = results[year][day][s_m][s_o]['consumption']['qc'][node_id][p]
-                                sheet.write(row_idx, p + 8, qc, decimal_style)
+                                sheet.cell(row=row_idx, column=p + 9).value = qc
+                                sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                 expected_qc[node_id][p] += qc * omega_m * omega_s
                             row_idx = row_idx + 1
 
@@ -2563,87 +2568,93 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                 node_id = node.bus_i
 
                 # - Active Power
-                sheet.write(row_idx, 0, operator_type)
-                sheet.write(row_idx, 1, tn_node_id)
-                sheet.write(row_idx, 2, node_id)
-                sheet.write(row_idx, 3, int(year))
-                sheet.write(row_idx, 4, day)
-                sheet.write(row_idx, 5, 'Pc, [MW]')
-                sheet.write(row_idx, 6, 'Expected')
-                sheet.write(row_idx, 7, '-')
+                sheet.cell(row=row_idx, column=1).value = operator_type
+                sheet.cell(row=row_idx, column=2).value = tn_node_id
+                sheet.cell(row=row_idx, column=3).value = node_id
+                sheet.cell(row=row_idx, column=4).value = int(year)
+                sheet.cell(row=row_idx, column=5).value = day
+                sheet.cell(row=row_idx, column=6).value = 'Pc, [MW]'
+                sheet.cell(row=row_idx, column=7).value = 'Expected'
+                sheet.cell(row=row_idx, column=8).value = '-'
                 for p in range(network[year][day].num_instants):
-                    sheet.write(row_idx, p + 8, expected_pc[node_id][p], decimal_style)
+                    sheet.cell(row=row_idx, column=p + 9).value = expected_pc[node_id][p]
+                    sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                 row_idx = row_idx + 1
 
                 if params.fl_reg:
 
                     # - Flexibility, up
-                    sheet.write(row_idx, 0, operator_type)
-                    sheet.write(row_idx, 1, tn_node_id)
-                    sheet.write(row_idx, 2, node_id)
-                    sheet.write(row_idx, 3, int(year))
-                    sheet.write(row_idx, 4, day)
-                    sheet.write(row_idx, 5, 'Flex Up, [MW]')
-                    sheet.write(row_idx, 6, 'Expected')
-                    sheet.write(row_idx, 7, '-')
+                    sheet.cell(row=row_idx, column=1).value = operator_type
+                    sheet.cell(row=row_idx, column=2).value = tn_node_id
+                    sheet.cell(row=row_idx, column=3).value = node_id
+                    sheet.cell(row=row_idx, column=4).value = int(year)
+                    sheet.cell(row=row_idx, column=5).value = day
+                    sheet.cell(row=row_idx, column=6).value = 'Flex Up, [MW]'
+                    sheet.cell(row=row_idx, column=7).value = 'Expected'
+                    sheet.cell(row=row_idx, column=8).value = '-'
                     for p in range(network[year][day].num_instants):
-                        sheet.write(row_idx, p + 8, expected_flex_up[node_id][p], decimal_style)
+                        sheet.cell(row=row_idx, column=p + 9).value = expected_flex_up[node_id][p]
+                        sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                     row_idx = row_idx + 1
 
                     # - Flexibility, down
-                    sheet.write(row_idx, 0, operator_type)
-                    sheet.write(row_idx, 1, tn_node_id)
-                    sheet.write(row_idx, 2, node_id)
-                    sheet.write(row_idx, 3, int(year))
-                    sheet.write(row_idx, 4, day)
-                    sheet.write(row_idx, 5, 'Flex Down, [MW]')
-                    sheet.write(row_idx, 6, 'Expected')
-                    sheet.write(row_idx, 7, '-')
+                    sheet.cell(row=row_idx, column=1).value = operator_type
+                    sheet.cell(row=row_idx, column=2).value = tn_node_id
+                    sheet.cell(row=row_idx, column=3).value = node_id
+                    sheet.cell(row=row_idx, column=4).value = int(year)
+                    sheet.cell(row=row_idx, column=5).value = day
+                    sheet.cell(row=row_idx, column=6).value = 'Flex Down, [MW]'
+                    sheet.cell(row=row_idx, column=7).value = 'Expected'
+                    sheet.cell(row=row_idx, column=8).value = '-'
                     for p in range(network[year][day].num_instants):
-                        sheet.write(row_idx, p + 8, expected_flex_down[node_id][p], decimal_style)
+                        sheet.cell(row=row_idx, column=p + 9).value = expected_flex_down[node_id][p]
+                        sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                     row_idx = row_idx + 1
 
                 if params.l_curt:
 
                     # - Load curtailment (active power)
-                    sheet.write(row_idx, 0, operator_type)
-                    sheet.write(row_idx, 1, tn_node_id)
-                    sheet.write(row_idx, 2, node_id)
-                    sheet.write(row_idx, 3, int(year))
-                    sheet.write(row_idx, 4, day)
-                    sheet.write(row_idx, 5, 'Pc_curt Up, [MW]')
-                    sheet.write(row_idx, 6, 'Expected')
-                    sheet.write(row_idx, 7, '-')
+                    sheet.cell(row=row_idx, column=1).value = operator_type
+                    sheet.cell(row=row_idx, column=2).value = tn_node_id
+                    sheet.cell(row=row_idx, column=3).value = node_id
+                    sheet.cell(row=row_idx, column=4).value = int(year)
+                    sheet.cell(row=row_idx, column=5).value = day
+                    sheet.cell(row=row_idx, column=6).value = 'Pc_curt Up, [MW]'
+                    sheet.cell(row=row_idx, column=7).value = 'Expected'
+                    sheet.cell(row=row_idx, column=8).value = '-'
                     for p in range(network[year][day].num_instants):
-                        sheet.write(row_idx, p + 8, expected_pc_curt[node_id][p], decimal_style)
+                        sheet.cell(row=row_idx, column=p + 9).value = expected_pc_curt[node_id][p]
+                        sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                     row_idx = row_idx + 1
 
                 if params.fl_reg or network.params.l_curt:
 
                     # - Active power net consumption
-                    sheet.write(row_idx, 0, operator_type)
-                    sheet.write(row_idx, 1, tn_node_id)
-                    sheet.write(row_idx, 2, node_id)
-                    sheet.write(row_idx, 3, int(year))
-                    sheet.write(row_idx, 4, day)
-                    sheet.write(row_idx, 5, 'Pc_net, [MW]')
-                    sheet.write(row_idx, 6, 'Expected')
-                    sheet.write(row_idx, 7, '-')
+                    sheet.cell(row=row_idx, column=1).value = operator_type
+                    sheet.cell(row=row_idx, column=2).value = tn_node_id
+                    sheet.cell(row=row_idx, column=3).value = node_id
+                    sheet.cell(row=row_idx, column=4).value = int(year)
+                    sheet.cell(row=row_idx, column=5).value = day
+                    sheet.cell(row=row_idx, column=6).value = 'Pc_net, [MW]'
+                    sheet.cell(row=row_idx, column=7).value = 'Expected'
+                    sheet.cell(row=row_idx, column=8).value = '-'
                     for p in range(network[year][day].num_instants):
-                        sheet.write(row_idx, p + 8, expected_pnet[node_id][p], decimal_style)
+                        sheet.cell(row=row_idx, column=p + 9).value = expected_pnet[node_id][p]
+                        sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                     row_idx = row_idx + 1
 
                 # - Reactive power
-                sheet.write(row_idx, 0, operator_type)
-                sheet.write(row_idx, 1, tn_node_id)
-                sheet.write(row_idx, 2, node_id)
-                sheet.write(row_idx, 3, int(year))
-                sheet.write(row_idx, 4, day)
-                sheet.write(row_idx, 5, 'Qc, [MVAr]')
-                sheet.write(row_idx, 6, 'Expected')
-                sheet.write(row_idx, 7, '-')
+                sheet.cell(row=row_idx, column=1).value = operator_type
+                sheet.cell(row=row_idx, column=2).value = tn_node_id
+                sheet.cell(row=row_idx, column=3).value = node_id
+                sheet.cell(row=row_idx, column=4).value = int(year)
+                sheet.cell(row=row_idx, column=5).value = day
+                sheet.cell(row=row_idx, column=6).value = 'Qc, [MVAr]'
+                sheet.cell(row=row_idx, column=7).value = 'Expected'
+                sheet.cell(row=row_idx, column=8).value = '-'
                 for p in range(network[year][day].num_instants):
-                    sheet.write(row_idx, p + 8, expected_qc[node_id][p], decimal_style)
+                    sheet.cell(row=row_idx, column=p + 9).value = expected_qc[node_id][p]
+                    sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                 row_idx = row_idx + 1
 
     return row_idx
