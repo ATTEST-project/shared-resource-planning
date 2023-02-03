@@ -259,16 +259,15 @@ def _build_subproblem_model(shared_ess_data):
         for y in model.years:
             model.es_e_capacity_degradation[e, y].setub(1.00)
             model.es_e_capacity_degradation[e, y].fix(1.00)
-            s_init = shared_ess_data.shared_energy_storages[repr_years[y]][e].s
             e_init = shared_ess_data.shared_energy_storages[repr_years[y]][e].e
             for d in model.days:
                 for s_m in model.scenarios_market:
                     for s_o in model.scenarios_operation:
                         for p in model.periods:
                             model.es_soc[e, y, d, s_m, s_o, p] = 0.50 * e_init
-                            model.es_p_ch[e, y, d, s_m, s_o, p] = 0.01 * s_init
+                            model.es_p_ch[e, y, d, s_m, s_o, p] = 0.00
                             model.es_p_dch[e, y, d, s_m, s_o, p] = 0.00
-                            model.es_p_up[e, y, d, s_m, s_o, p] = 0.01 * s_init
+                            model.es_p_up[e, y, d, s_m, s_o, p] = 0.00
                             model.es_p_down[e, y, d, s_m, s_o, p] = 0.00
             for x in model.years:
                 model.es_e_relative_capacity[e, y, x].fix(0.00)
@@ -469,7 +468,6 @@ def _build_subproblem_model(shared_ess_data):
     slack_penalty = 0.0
     operational_cost = 0.0
     c_p = shared_ess_data.cost_energy_p
-    c_q = shared_ess_data.cost_energy_q
     c_r_sec = shared_ess_data.cost_secondary_reserve
     c_r_ter_up = shared_ess_data.cost_tertiary_reserve_up
     c_r_ter_down = shared_ess_data.cost_tertiary_reserve_down
