@@ -1274,11 +1274,11 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
 
     # Planning results
     _write_main_info_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results)
-    '''
     _write_ess_capacity_investment_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['investment'])
     _write_ess_capacity_available_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['available'])
     _write_secondary_reserve_bands_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results['results'])
 
+    '''
     if bound_evolution:
         _write_bound_evolution_to_excel(wb, bound_evolution)
 
@@ -1351,129 +1351,136 @@ def _write_main_info_to_excel(shared_ess_data, workbook, results):
 
 def _write_ess_capacity_investment_to_excel(shared_ess_data, workbook, results):
 
+    sheet = workbook.create_sheet('Capacity Investment')
+
     years = [year for year in shared_ess_data.years]
 
-    num_style = xlwt.XFStyle()
-    num_style.num_format_str = '0.00'
-    sheet = workbook.add_sheet('Capacity Investment')
+    num_style = '0.00'
 
     # Write Header
-    line_idx = 0
-    sheet.write(line_idx, 0, 'Node')
-    sheet.write(line_idx, 1, 'Quantity')
+    line_idx = 1
+    sheet.cell(row=line_idx, column=1).value = 'Node'
+    sheet.cell(row=line_idx, column=2).value = 'Quantity'
     for y in range(len(years)):
         year = years[y]
-        sheet.write(0, y + 2, int(year))
+        sheet.cell(row=line_idx, column=y + 3).value = int(year)
 
     # Write investment values, power and energy
     for node_id in results:
 
         # Power capacity
         line_idx = line_idx + 1
-        sheet.write(line_idx, 0, node_id)
-        sheet.write(line_idx, 1, 'S, [MVA]')
+        sheet.cell(row=line_idx, column=1).value = node_id
+        sheet.cell(row=line_idx, column=2).value = 'S, [MVA]'
         for y in range(len(years)):
             year = years[y]
-            sheet.write(line_idx, y + 2, results[node_id][year]['power'], num_style)
+            sheet.cell(row=line_idx, column=y + 3).value = results[node_id][year]['power']
+            sheet.cell(row=line_idx, column=y + 3).number_format = num_style
 
         # Energy capacity
         line_idx = line_idx + 1
-        sheet.write(line_idx, 0, node_id)
-        sheet.write(line_idx, 1, 'E, [MVAh]')
+        sheet.cell(row=line_idx, column=1).value = node_id
+        sheet.cell(row=line_idx, column=2).value = 'E, [MVAh]'
         for y in range(len(years)):
             year = years[y]
-            sheet.write(line_idx, y + 2, results[node_id][year]['energy'], num_style)
+            sheet.cell(row=line_idx, column=y + 3).value = results[node_id][year]['energy']
+            sheet.cell(row=line_idx, column=y + 3).number_format = num_style
 
         # Power capacity cost
         line_idx = line_idx + 1
-        sheet.write(line_idx, 0, node_id)
-        sheet.write(line_idx, 1, 'Cost S, [m.u.]')
+        sheet.cell(row=line_idx, column=1).value = node_id
+        sheet.cell(row=line_idx, column=2).value = 'Cost S, [m.u.]'
         for y in range(len(years)):
             year = years[y]
             cost_s = shared_ess_data.cost_investment['power_capacity'][year] * results[node_id][year]['power']
-            sheet.write(line_idx, y + 2, cost_s, num_style)
+            sheet.cell(row=line_idx, column=y + 3).value = cost_s
+            sheet.cell(row=line_idx, column=y + 3).number_format = num_style
 
         # Energy capacity cost
         line_idx = line_idx + 1
-        sheet.write(line_idx, 0, node_id)
-        sheet.write(line_idx, 1, 'Cost E, [m.u.]')
+        sheet.cell(row=line_idx, column=1).value = node_id
+        sheet.cell(row=line_idx, column=2).value = 'Cost E, [m.u.]'
         for y in range(len(years)):
             year = years[y]
             cost_e = shared_ess_data.cost_investment['energy_capacity'][year] * results[node_id][year]['energy']
-            sheet.write(line_idx, y + 2, cost_e, num_style)
+            sheet.cell(row=line_idx, column=y + 3).value = cost_e
+            sheet.cell(row=line_idx, column=y + 3).number_format = num_style
 
         # Total capacity cost
         line_idx = line_idx + 1
-        sheet.write(line_idx, 0, node_id)
-        sheet.write(line_idx, 1, 'Cost Total, [m.u.]')
+        sheet.cell(row=line_idx, column=1).value = node_id
+        sheet.cell(row=line_idx, column=2).value = 'Cost Total, [m.u.]'
         for y in range(len(years)):
             year = years[y]
             cost_s = shared_ess_data.cost_investment['power_capacity'][year] * results[node_id][year]['power']
             cost_e = shared_ess_data.cost_investment['energy_capacity'][year] * results[node_id][year]['energy']
-            sheet.write(line_idx, y + 2, cost_s + cost_e, num_style)
+            sheet.cell(row=line_idx, column=y + 3).value = cost_s + cost_e
+            sheet.cell(row=line_idx, column=y + 3).number_format = num_style
 
 
 def _write_ess_capacity_available_to_excel(shared_ess_data, workbook, results):
 
-    num_style = xlwt.XFStyle()
-    num_style.num_format_str = '0.00'
-    perc_style = xlwt.XFStyle()
-    perc_style.num_format_str = '0.00%'
-    sheet = workbook.add_sheet('Capacity Available')
+    sheet = workbook.create_sheet('Capacity Available')
+
+    num_style = '0.00'
+    perc_style = '0.00%'
 
     # Write Header
-    row_idx, col_idx = 0, 0
-    sheet.write(row_idx, col_idx, 'Node')
+    row_idx, col_idx = 1, 1
+    sheet.cell(row=row_idx, column=col_idx).value = 'Node'
     col_idx = col_idx + 1
-    sheet.write(row_idx, col_idx, 'Quantity')
+    sheet.cell(row=row_idx, column=col_idx).value = 'Quantity'
     col_idx = col_idx + 1
     for year in shared_ess_data.years:
-        sheet.write(row_idx, col_idx, int(year))
+        sheet.cell(row=row_idx, column=col_idx).value = int(year)
         col_idx = col_idx + 1
 
     # Write investment values, power and energy
     for node_id in results:
 
         # Power capacity
-        col_idx = 0
+        col_idx = 1
         row_idx = row_idx + 1
-        sheet.write(row_idx, col_idx, node_id)
+        sheet.cell(row=row_idx, column=col_idx).value = node_id
         col_idx = col_idx + 1
-        sheet.write(row_idx, col_idx, 'S, [MVA]')
+        sheet.cell(row=row_idx, column=col_idx).value = 'S, [MVA]'
         col_idx = col_idx + 1
         for year in shared_ess_data.years:
-            sheet.write(row_idx, col_idx, results[node_id][year]['power'], num_style)
+            sheet.cell(row=row_idx, column=col_idx).value = results[node_id][year]['power']
+            sheet.cell(row=row_idx, column=col_idx).number_format = num_style
             col_idx = col_idx + 1
 
         # Energy capacity
-        col_idx = 0
+        col_idx = 1
         row_idx = row_idx + 1
-        sheet.write(row_idx, col_idx, node_id)
+        sheet.cell(row=row_idx, column=col_idx).value = node_id
         col_idx = col_idx + 1
-        sheet.write(row_idx, col_idx, 'E, [MVAh]')
+        sheet.cell(row=row_idx, column=col_idx).value = 'E, [MVAh]'
         col_idx = col_idx + 1
         for year in shared_ess_data.years:
-            sheet.write(row_idx, col_idx, results[node_id][year]['energy'], num_style)
+            sheet.cell(row=row_idx, column=col_idx).value = results[node_id][year]['energy']
+            sheet.cell(row=row_idx, column=col_idx).number_format = num_style
             col_idx = col_idx + 1
 
         # Degradation factor
         if "degradation_factor" in results[node_id][year]:
-            col_idx = 0
+            col_idx = 1
             row_idx = row_idx + 1
-            sheet.write(row_idx, col_idx, node_id)
+            sheet.cell(row=row_idx, column=col_idx).value = node_id
             col_idx = col_idx + 1
-            sheet.write(row_idx, col_idx, 'Degradation factor')
+            sheet.cell(row=row_idx, column=col_idx).value = 'Degradation factor'
             col_idx = col_idx + 1
             for year in shared_ess_data.years:
-                sheet.write(row_idx, col_idx, results[node_id][year]['degradation_factor'], perc_style)
+                sheet.cell(row=row_idx, column=col_idx).value = results[node_id][year]['degradation_factor']
+                sheet.cell(row=row_idx, column=col_idx).number_format = perc_style
                 col_idx = col_idx + 1
 
 
 def _write_secondary_reserve_bands_to_excel(shared_ess_data, workbook, results):
 
-    num_style = xlwt.XFStyle()
-    num_style.num_format_str = '0.00'
-    sheet = workbook.add_sheet('ESS, Secondary Reserve')
+    sheet = workbook.create_sheet('ESS, Secondary Reserve')
+
+    num_style = '0.00'
     repr_years = [year for year in shared_ess_data.years]
     repr_days = [day for day in shared_ess_data.days]
 
