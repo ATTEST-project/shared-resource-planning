@@ -1,5 +1,6 @@
 import os, sys, getopt
 from shared_resources_planning import SharedResourcesPlanning
+from shared_resources_planning import create_shared_energy_storage_model, update_shared_energy_storage_model_to_admm
 
 
 # ======================================================================================================================
@@ -58,7 +59,21 @@ def shared_resources_planning(working_directory, specification_filename):
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
     #planning_problem.plot_diagram()
-    planning_problem.run_planning_problem()
+    #planning_problem.run_planning_problem()
+
+    candidate_solution = {'investment': {}, 'total_capacity': {}}
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution['investment'][node_id] = dict()
+        candidate_solution['total_capacity'][node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution['investment'][node_id][year] = dict()
+            candidate_solution['investment'][node_id][year]['s'] = 0.00
+            candidate_solution['investment'][node_id][year]['e'] = 0.00
+            candidate_solution['total_capacity'][node_id][year] = dict()
+            candidate_solution['total_capacity'][node_id][year]['s'] = 0.00
+            candidate_solution['total_capacity'][node_id][year]['e'] = 0.00
+    esso_model = create_shared_energy_storage_model(planning_problem.shared_ess_data, candidate_solution['investment'])
 
     '''
     transmission_network = planning_problem.transmission_network
@@ -93,8 +108,8 @@ if __name__ == '__main__':
     shared_resources_planning(directory, filename)
     '''
 
-    filename = 'CS1.txt'
-    directory = os.path.join(os.getcwd(), 'data', 'CS1')
+    filename = 'HR1.txt'
+    directory = os.path.join(os.getcwd(), 'data', 'Simulations', 'HR1')
     shared_resources_planning(directory, filename)
 
 
