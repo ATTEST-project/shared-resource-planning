@@ -40,6 +40,7 @@ class NetworkPlanning:
         for year in self.years:
             results[year] = dict()
             for day in self.days:
+                print(f'[INFO] Running SMOPF, Network {model[year][day].name}...')
                 results[year][day] = run_smopf(model[year][day], self.params.solver_params, from_warm_start=from_warm_start)
         return results
 
@@ -158,7 +159,8 @@ def _write_optimization_results_to_excel(network_planning, data_dir, processed_r
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'ratio')
     _write_network_branch_results_to_excel(network_planning, wb, processed_results['results'], 'current_perc')
     _write_network_branch_power_flow_results_to_excel(network_planning, wb, processed_results['results'])
-    _write_network_energy_storage_results_to_excel(network_planning, wb, processed_results['results'])
+    if network_planning.params.es_reg:
+        _write_network_energy_storage_results_to_excel(network_planning, wb, processed_results['results'])
 
     results_filename = os.path.join(data_dir, f'{network_planning.name}_results.xlsx')
     try:
@@ -786,7 +788,7 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
         sheet_name = 'Transformer Ratio'
         aux_string = 'Ratio'
     elif result_type == 'current_perc':
-        sheet_name = 'Current'
+        sheet_name = 'Branch Loading'
         aux_string = 'I, [%]'
 
     row_idx = 1
@@ -942,8 +944,8 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
                             row_idx = row_idx + 1
 
                             # Pji, [MW]
-                            sheet.cell(row=row_idx, column=1).value = branch.fbus
-                            sheet.cell(row=row_idx, column=2).value = branch.tbus
+                            sheet.cell(row=row_idx, column=1).value = branch.tbus
+                            sheet.cell(row=row_idx, column=2).value = branch.fbus
                             sheet.cell(row=row_idx, column=3).value = int(year)
                             sheet.cell(row=row_idx, column=4).value = day
                             sheet.cell(row=row_idx, column=5).value = 'P, [MW]'
@@ -957,8 +959,8 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
                             row_idx = row_idx + 1
 
                             # Pji, [%]
-                            sheet.cell(row=row_idx, column=1).value = branch.fbus
-                            sheet.cell(row=row_idx, column=2).value = branch.tbus
+                            sheet.cell(row=row_idx, column=1).value = branch.tbus
+                            sheet.cell(row=row_idx, column=2).value = branch.fbus
                             sheet.cell(row=row_idx, column=3).value = int(year)
                             sheet.cell(row=row_idx, column=4).value = day
                             sheet.cell(row=row_idx, column=5).value = 'P, [%]'
@@ -1000,8 +1002,8 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
                             row_idx = row_idx + 1
 
                             # Qji, [MW]
-                            sheet.cell(row=row_idx, column=1).value = branch.fbus
-                            sheet.cell(row=row_idx, column=2).value = branch.tbus
+                            sheet.cell(row=row_idx, column=1).value = branch.tbus
+                            sheet.cell(row=row_idx, column=2).value = branch.fbus
                             sheet.cell(row=row_idx, column=3).value = int(year)
                             sheet.cell(row=row_idx, column=4).value = day
                             sheet.cell(row=row_idx, column=5).value = 'Q, [MVAr]'
@@ -1015,8 +1017,8 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
                             row_idx = row_idx + 1
 
                             # Qji, [%]
-                            sheet.cell(row=row_idx, column=1).value = branch.fbus
-                            sheet.cell(row=row_idx, column=2).value = branch.tbus
+                            sheet.cell(row=row_idx, column=1).value = branch.tbus
+                            sheet.cell(row=row_idx, column=2).value = branch.fbus
                             sheet.cell(row=row_idx, column=3).value = int(year)
                             sheet.cell(row=row_idx, column=4).value = day
                             sheet.cell(row=row_idx, column=5).value = 'Q, [%]'
@@ -1058,8 +1060,8 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
                             row_idx = row_idx + 1
 
                             # Sji, [MW]
-                            sheet.cell(row=row_idx, column=1).value = branch.fbus
-                            sheet.cell(row=row_idx, column=2).value = branch.tbus
+                            sheet.cell(row=row_idx, column=1).value = branch.tbus
+                            sheet.cell(row=row_idx, column=2).value = branch.fbus
                             sheet.cell(row=row_idx, column=3).value = int(year)
                             sheet.cell(row=row_idx, column=4).value = day
                             sheet.cell(row=row_idx, column=5).value = 'S, [MVA]'
@@ -1073,8 +1075,8 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
                             row_idx = row_idx + 1
 
                             # Sji, [%]
-                            sheet.cell(row=row_idx, column=1).value = branch.fbus
-                            sheet.cell(row=row_idx, column=2).value = branch.tbus
+                            sheet.cell(row=row_idx, column=1).value = branch.tbus
+                            sheet.cell(row=row_idx, column=2).value = branch.fbus
                             sheet.cell(row=row_idx, column=3).value = int(year)
                             sheet.cell(row=row_idx, column=4).value = day
                             sheet.cell(row=row_idx, column=5).value = 'S, [%]'
@@ -1380,7 +1382,7 @@ def _write_network_energy_storage_results_to_excel(network_planning, workbook, r
                 sheet.cell(row=row_idx, column=6).value = '-'
                 for p in range(network.num_instants):
                     sheet.cell(row=row_idx, column=p + 7).value = expected_soc_perc[node_id][p]
-                    sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                    sheet.cell(row=row_idx, column=p + 7).number_format = perc_style
                 row_idx = row_idx + 1
 
 

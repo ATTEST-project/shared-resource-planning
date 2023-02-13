@@ -567,7 +567,6 @@ def _build_model(network, params):
                         # Charging/discharging exclusivity constraint
                         if params.ess_relax:
                             # McCormick envelopes
-                            #model.energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.00)
                             model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pch)
                             model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pdch)
                             model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] >= energy_storage.s * pch + energy_storage.s * pdch - energy_storage.s**2)
@@ -864,14 +863,14 @@ def _build_model(network, params):
                         for p in model.periods:
                             slack_e = model.slack_e_up[i, s_m, s_o, p] + model.slack_e_down[i, s_m, s_o, p]
                             slack_f = model.slack_f_up[i, s_m, s_o, p] + model.slack_f_down[i, s_m, s_o, p]
-                            obj_scenario += COST_SLACK_VOLTAGE * (slack_e + slack_f)
+                            obj_scenario += COST_SLACK_VOLTAGE * network.baseMVA * (slack_e + slack_f)
 
                 # Branch power flow slacks
                 if params.slack_line_limits:
                     for b in model.branches:
                         for p in model.periods:
                             slack_iij_sqr = model.slack_iij_sqr[b, s_m, s_o, p]
-                            obj_scenario += COST_SLACK_BRANCH_FLOW * slack_iij_sqr
+                            obj_scenario += COST_SLACK_BRANCH_FLOW * network.baseMVA * slack_iij_sqr
 
                 obj += obj_scenario * omega_market * omega_oper
 
@@ -954,6 +953,8 @@ def run_smopf(model, params, from_warm_start=False):
 
     if params.solver == 'ipopt':
         solver.options['linear_solver'] = params.linear_solver
+        if params.linear_solver == 'pardiso':
+            solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
         solver.options['max_iter'] = 10000
         solver.options['nlp_scaling_method'] = 'none'
 
@@ -1364,8 +1365,8 @@ def _read_network_operational_data_from_file(network, filename):
         sheet_name_qg = f'Qg, {network.day}, S{i + 1}'
 
         # Consumption per scenario (active, reactive power)
-        pc_scenario = _get_operational_data_from_excel_file(filename, sheet_name_pc)
-        qc_scenario = _get_operational_data_from_excel_file(filename, sheet_name_qc)
+        pc_scenario = _get_consumption_flexibility_data_from_excel_file(filename, sheet_name_pc)
+        qc_scenario = _get_consumption_flexibility_data_from_excel_file(filename, sheet_name_qc)
         if not pc_scenario:
             print(f'[ERROR] Network {network.name}, {network.year}, {network.day}. '
                   f'No active power consumption data provided for scenario {i + 1}. Exiting...')
@@ -1380,8 +1381,8 @@ def _read_network_operational_data_from_file(network, filename):
         # Generation per scenario (active, reactive power)
         num_renewable_gens = network.get_num_renewable_gens()
         if num_renewable_gens > 0:
-            pg_scenario = _get_operational_data_from_excel_file(filename, sheet_name_pg)
-            qg_scenario = _get_operational_data_from_excel_file(filename, sheet_name_qg)
+            pg_scenario = _get_generation_data_from_excel_file(filename, sheet_name_pg)
+            qg_scenario = _get_generation_data_from_excel_file(filename, sheet_name_qg)
             if not pg_scenario:
                 print(f'[ERROR] Network {network.name}, {network.year}, {network.day}. '
                       f'No active power generation data provided for scenario {i + 1}. Exiting...')
@@ -1401,19 +1402,19 @@ def _read_network_operational_data_from_file(network, filename):
     data['generation']['status'] = gen_status
 
     # Flexibility data
-    flex_up_p = _get_operational_data_from_excel_file(filename, f'UpFlex, {network.day}')
+    flex_up_p = _get_consumption_flexibility_data_from_excel_file(filename, f'UpFlex, {network.day}')
     if not flex_up_p:
         for node in network.nodes:
             flex_up_p[node.bus_i] = [0.0 for _ in range(network.num_instants)]
     data['flexibility']['upward'] = flex_up_p
 
-    flex_down_p = _get_operational_data_from_excel_file(filename, f'DownFlex, {network.day}')
+    flex_down_p = _get_consumption_flexibility_data_from_excel_file(filename, f'DownFlex, {network.day}')
     if not flex_down_p:
         for node in network.nodes:
             flex_down_p[node.bus_i] = [0.0 for _ in range(network.num_instants)]
     data['flexibility']['downward'] = flex_down_p
 
-    flex_cost = _get_operational_data_from_excel_file(filename, f'CostFlex, {network.day}')
+    flex_cost = _get_consumption_flexibility_data_from_excel_file(filename, f'CostFlex, {network.day}')
     if not flex_cost:
         for node in network.nodes:
             flex_cost[node.bus_i] = [0.0 for _ in range(network.num_instants)]
@@ -1446,7 +1447,7 @@ def _get_operational_scenario_info_from_excel_file(filename, sheet_name):
     return num_scenarios, prob_scenarios
 
 
-def _get_operational_data_from_excel_file(filename, sheet_name):
+def _get_consumption_flexibility_data_from_excel_file(filename, sheet_name):
 
     try:
         data = pd.read_excel(filename, sheet_name=sheet_name)
@@ -1463,6 +1464,26 @@ def _get_operational_data_from_excel_file(filename, sheet_name):
                     for j in range(0, num_cols - 1):
                         node_values[j] += data.iloc[i, j + 1]
             processed_data[node_id] = node_values
+    except:
+        print(f'[WARNING] Workbook {filename}. Sheet {sheet_name} does not exist.')
+        processed_data = {}
+
+    return processed_data
+
+
+# Note: This differs from the previous function, because we can have more than one generator per node!
+# In the end, this function returns a list of lists with size num_gens x num_instants
+def _get_generation_data_from_excel_file(filename, sheet_name):
+
+    try:
+        data = pd.read_excel(filename, sheet_name=sheet_name)
+        num_rows, num_cols = data.shape
+        processed_data = list()
+        for i in range(num_rows):
+            processed_data_gen = [0.0 for _ in range(num_cols - 1)]
+            for j in range(0, num_cols - 1):
+                processed_data_gen[j] = data.iloc[i, j + 1]
+            processed_data.append(processed_data_gen)
     except:
         print(f'[WARNING] Workbook {filename}. Sheet {sheet_name} does not exist.')
         processed_data = {}
@@ -1511,15 +1532,14 @@ def _update_network_with_excel_data(network, data):
     for g in range(len(network.generators)):
 
         generator = network.generators[g]
-        node_id = generator.bus
         generator.pg = dict()  # Note: Changes Pg and Qg fields to dicts (per scenario)
         generator.qg = dict()
 
         # Active and Reactive power
         for s in range(len(network.prob_operation_scenarios)):
             if generator.gen_type in GEN_CURTAILLABLE_TYPES:
-                pg = _get_generation_from_data(data, node_id, network.num_instants, s, DATA_ACTIVE_POWER)
-                qg = _get_generation_from_data(data, node_id, network.num_instants, s, DATA_REACTIVE_POWER)
+                pg = _get_generation_from_data(data, g, s, DATA_ACTIVE_POWER)
+                qg = _get_generation_from_data(data, g, s, DATA_REACTIVE_POWER)
                 generator.pg[s] = [instant / network.baseMVA for instant in pg]
                 generator.qg[s] = [instant / network.baseMVA for instant in qg]
             else:
@@ -1569,20 +1589,14 @@ def _get_flexibility_from_data(data, node_id, num_instants, flex_type):
     return flex
 
 
-def _get_generation_from_data(data, node_id, num_instants, idx_scenario, type):
+def _get_generation_from_data(data, gen_idx, idx_scenario, type):
 
     if type == DATA_ACTIVE_POWER:
         power_label = 'pg'
     else:
         power_label = 'qg'
 
-    for node in data['generation'][power_label][idx_scenario]:
-        if node == node_id:
-            return data['generation'][power_label][idx_scenario][node_id]
-
-    generation = [0.0 for _ in range(num_instants)]
-
-    return generation
+    return data['generation'][power_label][idx_scenario][gen_idx]
 
 
 # ======================================================================================================================
@@ -2251,7 +2265,7 @@ def _get_branch_power_losses(network, params, model, branch_idx, s_m, s_o, p):
     pij, _ = _get_branch_power_flow(network, params, branch, branch.fbus, branch.tbus, model, s_m, s_o, p)
     pji, _ = _get_branch_power_flow(network, params, branch, branch.tbus, branch.fbus, model, s_m, s_o, p)
 
-    return abs(pij - pji)
+    return abs(pij + pji)
 
 
 def _get_branch_power_flow(network, params, branch, fbus, tbus, model, s_m, s_o, p):

@@ -57,7 +57,7 @@ def shared_resources_planning(working_directory, specification_filename):
 
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
-    #planning_problem.plot_diagram()
+    planning_problem.plot_diagram()
     planning_problem.run_planning_problem()
 
     '''
@@ -77,6 +77,30 @@ def shared_resources_planning(working_directory, specification_filename):
         processed_results = distribution_network.process_results(dn_model, results)
         distribution_network.write_optimization_results_to_excel(processed_results)
     '''
+
+    '''
+    import time
+    candidate_solution = {'investment': {}, 'total_capacity': {}}
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution['investment'][node_id] = dict()
+        candidate_solution['total_capacity'][node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution['investment'][node_id][year] = dict()
+            candidate_solution['investment'][node_id][year]['s'] = 1.00
+            candidate_solution['investment'][node_id][year]['e'] = 1.00
+            candidate_solution['total_capacity'][node_id][year] = dict()
+            candidate_solution['total_capacity'][node_id][year]['s'] = 1.00
+            candidate_solution['total_capacity'][node_id][year]['e'] = 1.00
+    shared_ess_data = planning_problem.shared_ess_data
+    esso_model = shared_ess_data.build_subproblem()
+    shared_ess_data.update_model_with_candidate_solution(esso_model, candidate_solution['total_capacity'])
+    start = time.time()
+    shared_ess_data.optimize(esso_model)
+    end = time.time()
+    print(f'[INFO] Elapsed time: {end - start}')
+    '''
+
     print('==========================================================================================================')
     print('                                               END                                                        ')
     print('==========================================================================================================')
@@ -93,8 +117,8 @@ if __name__ == '__main__':
     shared_resources_planning(directory, filename)
     '''
 
-    filename = 'HR1.txt'
-    directory = os.path.join(os.getcwd(), 'data', 'Simulations', 'HR1')
+    filename = 'CS1.txt'
+    directory = os.path.join(os.getcwd(), 'data', 'CS1')
     shared_resources_planning(directory, filename)
 
 
