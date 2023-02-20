@@ -302,8 +302,8 @@ def _build_model(network, params):
                     for s_o in model.scenarios_operation:
                         for p in model.periods:
                             if gen.status[p] == 1:
-                                model.pg[g, s_m, s_o, p] = (pg_ub + pg_lb) * 0.50
-                                model.qg[g, s_m, s_o, p] = (qg_ub + qg_lb) * 0.50
+                                model.pg[g, s_m, s_o, p] = (pg_ub - pg_lb) * 0.50
+                                model.qg[g, s_m, s_o, p] = (qg_ub - qg_lb) * 0.50
                                 model.pg[g, s_m, s_o, p].setlb(pg_lb)
                                 model.pg[g, s_m, s_o, p].setub(pg_ub)
                                 model.qg[g, s_m, s_o, p].setlb(qg_lb)
@@ -395,12 +395,14 @@ def _build_model(network, params):
                         model.flex_p_down[i, s_m, s_o, p].setub(abs(max(flex_up, flex_down)))
     if params.l_curt:
         model.pc_curt = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
+        model.qc_curt = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
         for i in model.nodes:
             node = network.nodes[i]
             for s_m in model.scenarios_market:
                 for s_o in model.scenarios_operation:
                     for p in model.periods:
                         model.pc_curt[i, s_m, s_o, p].setub(max(node.pd[s_o][p], 0.00))
+                        model.qc_curt[i, s_m, s_o, p].setub(max(node.qd[s_o][p], 0.00))
 
     # - Transformers
     model.r = pe.Var(model.branches, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=1.0)
@@ -656,6 +658,7 @@ def _build_model(network, params):
                         Pd += (model.flex_p_up[i, s_m, s_o, p] - model.flex_p_down[i, s_m, s_o, p])
                     if params.l_curt:
                         Pd -= model.pc_curt[i, s_m, s_o, p]
+                        Qd -= model.qc_curt[i, s_m, s_o, p]
                     if params.es_reg:
                         for e in model.energy_storages:
                             if network.energy_storages[e].bus == node.bus_i:
@@ -848,7 +851,9 @@ def _build_model(network, params):
                     for i in model.nodes:
                         for p in model.periods:
                             pc_curt = model.pc_curt[i, s_m, s_o, p]
+                            qc_curt = model.qc_curt[i, s_m, s_o, p]
                             obj_scenario += COST_CONSUMPTION_CURTAILMENT * network.baseMVA * (pc_curt)
+                            obj_scenario += COST_CONSUMPTION_CURTAILMENT * network.baseMVA * (qc_curt)
 
                 # Generation curtailment
                 if params.rg_curt:
@@ -915,7 +920,9 @@ def _build_model(network, params):
                     for i in model.nodes:
                         for p in model.periods:
                             pc_curt = model.pc_curt[i, s_m, s_o, p]
+                            qc_curt = model.qc_curt[i, s_m, s_o, p]
                             obj_scenario += PENALTY_LOAD_CURTAILMENT * pc_curt
+                            obj_scenario += PENALTY_LOAD_CURTAILMENT * qc_curt
 
                 obj += obj_scenario * omega_market * omega_oper
 
@@ -955,8 +962,13 @@ def run_smopf(model, params, from_warm_start=False):
         solver.options['linear_solver'] = params.linear_solver
         if params.linear_solver == 'pardiso':
             solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
-        solver.options['max_iter'] = 10000
-        solver.options['nlp_scaling_method'] = 'none'
+        #solver.options['max_iter'] = 1000
+        #solver.options['nlp_scaling_method'] = 'none'
+        solver.options['mu_strategy'] = 'adaptive'
+        if params.linear_solver == 'ma57':
+            solver.options['ma57_automatic_scaling'] = 'yes'
+            #solver.options['ma57_small_pivot_flag'] = 1
+            #solver.options['ma57_pivtolmax'] = 1e-3
 
     result = solver.solve(model, tee=params.verbose)
 
@@ -1762,7 +1774,7 @@ def _process_results(network, model, params, results=dict()):
 
             processed_results[s_m][s_o] = {
                 'voltage': {'vmag': {}, 'vang': {}},
-                'consumption': {'pc': {}, 'qc': {}, 'pc_net': {}},
+                'consumption': {'pc': {}, 'qc': {}, 'pc_net': {}, 'qc_net': {}},
                 'generation': {'pg': {}, 'qg': {}, 'pg_net': {}},
                 'branches': {'power_flow': {'pij': {}, 'pji': {}, 'qij': {}, 'qji': {}, 'sij': {}, 'sji': {}},
                              'current_perc': {}, 'losses': {}, 'ratio': {}},
@@ -1779,6 +1791,7 @@ def _process_results(network, model, params, results=dict()):
 
             if params.l_curt:
                 processed_results[s_m][s_o]['consumption']['pc_curt'] = dict()
+                processed_results[s_m][s_o]['consumption']['qc_curt'] = dict()
 
             if params.rg_curt:
                 processed_results[s_m][s_o]['generation']['pg_curt'] = dict()
@@ -1810,17 +1823,20 @@ def _process_results(network, model, params, results=dict()):
                 processed_results[s_m][s_o]['consumption']['pc'][node.bus_i] = []
                 processed_results[s_m][s_o]['consumption']['qc'][node.bus_i] = []
                 processed_results[s_m][s_o]['consumption']['pc_net'][node.bus_i] = [0.00 for _ in range(network.num_instants)]
+                processed_results[s_m][s_o]['consumption']['qc_net'][node.bus_i] = [0.00 for _ in range(network.num_instants)]
                 if params.fl_reg:
                     processed_results[s_m][s_o]['consumption']['p_up'][node.bus_i] = []
                     processed_results[s_m][s_o]['consumption']['p_down'][node.bus_i] = []
                 if params.l_curt:
                     processed_results[s_m][s_o]['consumption']['pc_curt'][node.bus_i] = []
+                    processed_results[s_m][s_o]['consumption']['qc_curt'][node.bus_i] = []
                 for p in model.periods:
                     pc = pe.value(model.pc[i, s_m, s_o, p]) * network.baseMVA
                     qc = pe.value(model.qc[i, s_m, s_o, p]) * network.baseMVA
                     processed_results[s_m][s_o]['consumption']['pc'][node.bus_i].append(pc)
                     processed_results[s_m][s_o]['consumption']['qc'][node.bus_i].append(qc)
                     processed_results[s_m][s_o]['consumption']['pc_net'][node.bus_i][p] += pc
+                    processed_results[s_m][s_o]['consumption']['qc_net'][node.bus_i][p] += qc
                     if params.fl_reg:
                         pup = pe.value(model.flex_p_up[i, s_m, s_o, p]) * network.baseMVA
                         pdown = pe.value(model.flex_p_down[i, s_m, s_o, p]) * network.baseMVA
@@ -1829,8 +1845,11 @@ def _process_results(network, model, params, results=dict()):
                         processed_results[s_m][s_o]['consumption']['pc_net'][node.bus_i][p] += pup - pdown
                     if params.l_curt:
                         pc_curt = pe.value(model.pc_curt[i, s_m, s_o, p]) * network.baseMVA
+                        qc_curt = pe.value(model.qc_curt[i, s_m, s_o, p]) * network.baseMVA
                         processed_results[s_m][s_o]['consumption']['pc_curt'][node.bus_i].append(pc_curt)
                         processed_results[s_m][s_o]['consumption']['pc_net'][node.bus_i][p] -= pc_curt
+                        processed_results[s_m][s_o]['consumption']['qc_curt'][node.bus_i].append(pc_curt)
+                        processed_results[s_m][s_o]['consumption']['qc_net'][node.bus_i][p] -= qc_curt
 
             # Generation
             for g in model.generators:

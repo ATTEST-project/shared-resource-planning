@@ -396,8 +396,9 @@ def create_transmission_network_model(transmission_network, interface_v_vars, in
                             qc = interface_pf_vars['dso'][node_id][year][day]['q'][p] / s_base
                             tso_model[year][day].pc[node_idx, s_m, s_o, p].fix(pc)
                             tso_model[year][day].qc[node_idx, s_m, s_o, p].fix(qc)
-                            tso_model[year][day].flex_p_up[node_idx, s_m, s_o, p].fix(0.0)
-                            tso_model[year][day].flex_p_down[node_idx, s_m, s_o, p].fix(0.0)
+                            if transmission_network.params.fl_reg:
+                                tso_model[year][day].flex_p_up[node_idx, s_m, s_o, p].fix(0.0)
+                                tso_model[year][day].flex_p_down[node_idx, s_m, s_o, p].fix(0.0)
     transmission_network.optimize(tso_model)
 
     # Get initial interface PF values
@@ -2629,7 +2630,7 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                         sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                     row_idx = row_idx + 1
 
-                if params.fl_reg or network.params.l_curt:
+                if params.fl_reg or params.l_curt:
 
                     # - Active power net consumption
                     sheet.cell(row=row_idx, column=1).value = operator_type

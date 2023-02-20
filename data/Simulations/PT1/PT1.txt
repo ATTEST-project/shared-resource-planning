@@ -1,0 +1,27 @@
+Years: 1
+2020	10
+2030	10
+2040	10
+2050	10
+
+Days: 1
+Winter	365
+
+NumInstants: 24
+
+Discount Factor: 0.03
+
+Market Data
+PT1_market_data
+
+Distribution Networks: 1
+Distribution_Network_PT1	Distribution_Network_PT1_params.txt	29
+
+Transmission Network
+Transmission_Network_PT	Transmission_Network_PT_params.txt
+
+Shared Energy Storage
+PT1_ESS_Params.txt	PT1_ESS.xlsx
+
+Planning Parameters
+PT1_params.txt

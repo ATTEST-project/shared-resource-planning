@@ -53,6 +53,7 @@ class SharedEnergyStorageData:
         return _build_subproblem_model(self)
 
     def optimize(self, model, from_warm_start=False):
+        print('[INFO] \t - Running Shared ESS optimization...')
         return _optimize(model, self.params.solver_params, from_warm_start=from_warm_start)
 
     def get_sensitivities(self, model):
