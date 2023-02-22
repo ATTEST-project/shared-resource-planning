@@ -44,6 +44,9 @@ class Network:
         _pre_process_network(self)
         return _build_model(self, params)
 
+    def run_smopf(self, model, params, from_warm_start=False):
+        return _run_smopf(self, model, params, from_warm_start=from_warm_start)
+
     def process_results(self, model, params, results=dict()):
         return _process_results(self, model, params, results=results)
 
@@ -941,7 +944,7 @@ def _build_model(network, params):
     return model
 
 
-def run_smopf(model, params, from_warm_start=False):
+def _run_smopf(network, model, params, from_warm_start=False):
 
     solver = po.SolverFactory(params.solver, executable=params.solver_path)
 
@@ -953,8 +956,9 @@ def run_smopf(model, params, from_warm_start=False):
         solver.options['warm_start_mult_bound_push'] = 1e-9
         solver.options['mu_init'] = 1e-9
     else:
-        solver.options['least_square_init_primal'] = 'yes'
-        solver.options['least_square_init_duals'] = 'yes'
+        if network.is_transmission:
+            solver.options['least_square_init_primal'] = 'yes'
+            solver.options['least_square_init_duals'] = 'yes'
 
     solver.options['tol'] = params.solver_tol
     if params.verbose:

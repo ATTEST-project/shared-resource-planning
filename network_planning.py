@@ -1,7 +1,7 @@
 import os
 from openpyxl import Workbook
 from definitions import *
-from network import Network, run_smopf
+from network import Network
 from network_parameters import NetworkParameters
 
 
@@ -42,7 +42,7 @@ class NetworkPlanning:
             results[year] = dict()
             for day in self.days:
                 print(f'[INFO] \t\t - Year {year}, Day {day}...')
-                results[year][day] = run_smopf(model[year][day], self.params.solver_params, from_warm_start=from_warm_start)
+                results[year][day] = self.network[year][day].run_smopf(model[year][day], self.params.solver_params, from_warm_start=from_warm_start)
         return results
 
     def compute_primal_value(self, model, params):
@@ -547,7 +547,7 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
                                     q_net = results[year][day][s_m][s_o]['consumption']['qc_net'][node_id][p]
                                     sheet.cell(row=row_idx, column=p + 7).value = q_net
                                     sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
-                                    expected_pnet[node_id][p] += q_net * omega_m * omega_s
+                                    expected_qnet[node_id][p] += q_net * omega_m * omega_s
                                 row_idx = row_idx + 1
 
             for node in network.nodes:
