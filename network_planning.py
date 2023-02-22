@@ -533,7 +533,7 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
                                     qc_curt = results[year][day][s_m][s_o]['consumption']['qc_curt'][node_id][p]
                                     sheet.cell(row=row_idx, column=p + 7).value = qc_curt
                                     sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
-                                    expected_pc_curt[node_id][p] += qc_curt * omega_m * omega_s
+                                    expected_qc_curt[node_id][p] += qc_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
                                 # - Reactive power net consumption

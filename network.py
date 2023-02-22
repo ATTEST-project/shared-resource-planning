@@ -952,6 +952,9 @@ def run_smopf(model, params, from_warm_start=False):
         solver.options['warm_start_bound_push'] = 1e-9
         solver.options['warm_start_mult_bound_push'] = 1e-9
         solver.options['mu_init'] = 1e-9
+    else:
+        solver.options['least_square_init_primal'] = 'yes'
+        solver.options['least_square_init_duals'] = 'yes'
 
     solver.options['tol'] = params.solver_tol
     if params.verbose:
@@ -962,13 +965,10 @@ def run_smopf(model, params, from_warm_start=False):
         solver.options['linear_solver'] = params.linear_solver
         if params.linear_solver == 'pardiso':
             solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
-        #solver.options['max_iter'] = 1000
-        #solver.options['nlp_scaling_method'] = 'none'
-        solver.options['mu_strategy'] = 'adaptive'
+        solver.options['max_iter'] = 1000
+        solver.options['nlp_scaling_method'] = 'none'
         if params.linear_solver == 'ma57':
-            solver.options['ma57_automatic_scaling'] = 'yes'
-            #solver.options['ma57_small_pivot_flag'] = 1
-            #solver.options['ma57_pivtolmax'] = 1e-3
+            solver.options['ma57_automatic_scaling'] = 'no'
 
     result = solver.solve(model, tee=params.verbose)
 
@@ -1729,19 +1729,19 @@ def _plot_networkx_diagram(network, data_dir='data'):
     pos = nx.spring_layout(graph)
     pos_above, pos_below = {}, {}
     for k, v in pos.items():
-        pos_above[k] = (v[0], v[1] + 0.050)
-        pos_below[k] = (v[0], v[1] - 0.050)
+        pos_above[k] = (v[0], v[1] + 0.025)
+        pos_below[k] = (v[0], v[1] - 0.025)
 
     # Plot
     fig, ax = plt.subplots(figsize=(12, 12))
-    nx.draw_networkx_nodes(graph, ax=ax, pos=pos, node_color=node_colors, node_size=250)
-    nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=10)
-    nx.draw_networkx_labels(graph, ax=ax, pos=pos_below, labels=node_voltage_labels, font_size=8)
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=1, edge_color='black')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=2, edge_color='blue')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=2, edge_color='red')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=2, edge_color='red')
-    nx.draw_networkx_edge_labels(graph, ax=ax, pos=pos, edge_labels=edge_labels, font_size=8, rotate=False)
+    nx.draw_networkx_nodes(graph, ax=ax, pos=pos, node_color=node_colors, node_size=125)
+    nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=5)
+    nx.draw_networkx_labels(graph, ax=ax, pos=pos_below, labels=node_voltage_labels, font_size=4)
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=0.5, edge_color='black')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=1, edge_color='blue')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=1, edge_color='red')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=1, edge_color='red')
+    nx.draw_networkx_edge_labels(graph, ax=ax, pos=pos, edge_labels=edge_labels, font_size=4, rotate=False)
     plt.axis('off')
 
     filename = os.path.join(network.diagrams_dir, f'{network.name}_{network.year}_{network.day}.pdf')
@@ -1848,7 +1848,7 @@ def _process_results(network, model, params, results=dict()):
                         qc_curt = pe.value(model.qc_curt[i, s_m, s_o, p]) * network.baseMVA
                         processed_results[s_m][s_o]['consumption']['pc_curt'][node.bus_i].append(pc_curt)
                         processed_results[s_m][s_o]['consumption']['pc_net'][node.bus_i][p] -= pc_curt
-                        processed_results[s_m][s_o]['consumption']['qc_curt'][node.bus_i].append(pc_curt)
+                        processed_results[s_m][s_o]['consumption']['qc_curt'][node.bus_i].append(qc_curt)
                         processed_results[s_m][s_o]['consumption']['qc_net'][node.bus_i][p] -= qc_curt
 
             # Generation
