@@ -231,7 +231,9 @@ def _build_model(network, params):
     # ------------------------------------------------------------------------------------------------------------------
     # Decision variables
     # - Voltage
-    model.e = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=1.0)
+    gen_idx = network.get_gen_idx(ref_node_id)
+    vg = network.generators[gen_idx].vg
+    model.e = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=vg)
     model.f = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=0.0)
     if params.slack_voltage_limits:
         model.slack_e_up = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.00)
@@ -349,7 +351,7 @@ def _build_model(network, params):
                             for s_o in model.scenarios_operation:
                                 for p in model.periods:
                                     init_pg = 0.0
-                                    if gen.status:
+                                    if gen.status[p] == 1:
                                         init_pg = max(gen.pg[s_o][p], 0.0)
                                     model.pg_curt[g, s_m, s_o, p].setub(init_pg)
                 else:
@@ -367,7 +369,7 @@ def _build_model(network, params):
         for s_m in model.scenarios_market:
             for s_o in model.scenarios_operation:
                 for p in model.periods:
-                    if not network.branches[b].status:
+                    if not network.branches[b].status == 1:
                         model.iij_sqr[b, s_m, s_o, p].fix(0.0)
                         if params.slack_line_limits:
                             model.slack_iij_sqr[b, s_m, s_o, p].fix(0.0)
@@ -420,7 +422,6 @@ def _build_model(network, params):
                             model.r[i, s_m, s_o, p].setub(TRANSFORMER_MAXIMUM_RATIO)
                             model.r[i, s_m, s_o, p].setlb(TRANSFORMER_MINIMUM_RATIO)
                         else:
-                            #model.r[i, s_m, s_o, p].fix(branch.ratio)
                             model.r[i, s_m, s_o, p].fix(1.00)
         else:
             # - Line
@@ -946,7 +947,7 @@ def _build_model(network, params):
 
 def _run_smopf(network, model, params, from_warm_start=False):
 
-    solver = po.SolverFactory(params.solver, executable=params.solver_path)
+    solver = po.SolverFactory(params.solver_params.solver, executable=params.solver_params.solver_path)
 
     if from_warm_start:
         model.ipopt_zL_in.update(model.ipopt_zL_out)
@@ -960,21 +961,37 @@ def _run_smopf(network, model, params, from_warm_start=False):
             solver.options['least_square_init_primal'] = 'yes'
             solver.options['least_square_init_duals'] = 'yes'
 
-    solver.options['tol'] = params.solver_tol
-    if params.verbose:
+    if params.solver_params.verbose:
         solver.options['print_level'] = 6
         solver.options['output_file'] = 'optim_log.txt'
 
-    if params.solver == 'ipopt':
-        solver.options['linear_solver'] = params.linear_solver
-        if params.linear_solver == 'pardiso':
-            solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
+    if params.solver_params.solver == 'ipopt':
+
+        solver.options['tol'] = params.solver_params.solver_tol
+        solver.options['dual_inf_tol'] = 1 / params.solver_params.solver_tol * 1e1
+        solver.options['constr_viol_tol'] = params.solver_params.solver_tol * 1e1
+        solver.options['compl_inf_tol'] = params.solver_params.solver_tol * 1e1
+
+        solver.options['acceptable_tol'] = params.solver_params.solver_tol * 1e1
+        solver.options['acceptable_iter'] = 5
+        solver.options['acceptable_dual_inf_tol'] = 1 / (params.solver_params.solver_tol * 1e2)
+        solver.options['acceptable_constr_viol_tol'] = params.solver_params.solver_tol * 1e2
+        solver.options['acceptable_compl_inf_tol'] = params.solver_params.solver_tol * 1e2
+
+        solver.options['s_max'] = 5
         solver.options['max_iter'] = 1000
         solver.options['nlp_scaling_method'] = 'none'
-        if params.linear_solver == 'ma57':
+        solver.options['fixed_variable_treatment'] = 'relax_bounds'
+
+        solver.options['linear_solver'] = params.solver_params.linear_solver
+        if params.solver_params.linear_solver == 'pardiso':
+            solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
+        if params.solver_params.linear_solver == 'ma27':
             solver.options['ma57_automatic_scaling'] = 'no'
 
-    result = solver.solve(model, tee=params.verbose)
+
+
+    result = solver.solve(model, tee=params.solver_params.verbose)
 
     '''
     import logging

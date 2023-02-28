@@ -1,4 +1,4 @@
-obj_type = COST
+obj_type = CONGESTION_MANAGEMENT
 transf_reg = True
 es_reg = True
 fl_reg = True
@@ -11,7 +11,7 @@ slack_voltage_limits = True
 solver = "ipopt"
 linear_solver = "ma57"
 solver_path = "C:\Lib\optim\dist\bin\ipopt.exe"
-solver_tol = 1e-6
+solver_tol = 1e-2
 verbose = False
 print_to_screen = False
 plot_diagram = False

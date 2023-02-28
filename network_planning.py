@@ -42,7 +42,7 @@ class NetworkPlanning:
             results[year] = dict()
             for day in self.days:
                 print(f'[INFO] \t\t - Year {year}, Day {day}...')
-                results[year][day] = self.network[year][day].run_smopf(model[year][day], self.params.solver_params, from_warm_start=from_warm_start)
+                results[year][day] = self.network[year][day].run_smopf(model[year][day], self.params, from_warm_start=from_warm_start)
         return results
 
     def compute_primal_value(self, model, params):
