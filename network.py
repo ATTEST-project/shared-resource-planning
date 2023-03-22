@@ -293,6 +293,10 @@ def _build_model(network, params):
                             for p in model.periods:
                                     model.pg[g, s_m, s_o, p] = 0.00
                                     model.qg[g, s_m, s_o, p] = 0.00
+                                    model.pg[g, s_m, s_o, p].setlb(pg_lb)
+                                    model.pg[g, s_m, s_o, p].setub(pg_ub)
+                                    model.qg[g, s_m, s_o, p].setlb(qg_lb)
+                                    model.qg[g, s_m, s_o, p].setub(qg_ub)
                 else:
                     net_load = network.get_total_net_load()
                     for s_m in model.scenarios_market:
@@ -307,8 +311,8 @@ def _build_model(network, params):
                     for s_o in model.scenarios_operation:
                         for p in model.periods:
                             if gen.status[p] == 1:
-                                model.pg[g, s_m, s_o, p] = (pg_ub - pg_lb) * 0.50
-                                model.qg[g, s_m, s_o, p] = (qg_ub - qg_lb) * 0.50
+                                model.pg[g, s_m, s_o, p] = 0.00
+                                model.qg[g, s_m, s_o, p] = 0.00
                                 model.pg[g, s_m, s_o, p].setlb(pg_lb)
                                 model.pg[g, s_m, s_o, p].setub(pg_ub)
                                 model.qg[g, s_m, s_o, p].setlb(qg_lb)
@@ -958,8 +962,8 @@ def _run_smopf(network, model, params, from_warm_start=False):
         solver.options['mu_init'] = 1e-9
     else:
         if network.is_transmission:
-            solver.options['least_square_init_primal'] = 'yes'
-            solver.options['least_square_init_duals'] = 'yes'
+            solver.options['least_square_init_primal'] = 'no'
+            solver.options['least_square_init_duals'] = 'no'
 
     if params.solver_params.verbose:
         solver.options['print_level'] = 6
@@ -978,18 +982,14 @@ def _run_smopf(network, model, params, from_warm_start=False):
         solver.options['acceptable_constr_viol_tol'] = params.solver_params.solver_tol * 1e2
         solver.options['acceptable_compl_inf_tol'] = params.solver_params.solver_tol * 1e2
 
-        solver.options['s_max'] = 5
-        solver.options['max_iter'] = 1000
+        solver.options['s_max'] = 0.10
+        solver.options['max_iter'] = 10000
         solver.options['nlp_scaling_method'] = 'none'
         solver.options['fixed_variable_treatment'] = 'relax_bounds'
 
         solver.options['linear_solver'] = params.solver_params.linear_solver
         if params.solver_params.linear_solver == 'pardiso':
             solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
-        if params.solver_params.linear_solver == 'ma27':
-            solver.options['ma57_automatic_scaling'] = 'no'
-
-
 
     result = solver.solve(model, tee=params.solver_params.verbose)
 
@@ -1755,14 +1755,14 @@ def _plot_networkx_diagram(network, data_dir='data'):
 
     # Plot
     fig, ax = plt.subplots(figsize=(12, 12))
-    nx.draw_networkx_nodes(graph, ax=ax, pos=pos, node_color=node_colors, node_size=125)
-    nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=5)
-    nx.draw_networkx_labels(graph, ax=ax, pos=pos_below, labels=node_voltage_labels, font_size=4)
+    nx.draw_networkx_nodes(graph, ax=ax, pos=pos, node_color=node_colors, node_size=50)
+    nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=3)
+    nx.draw_networkx_labels(graph, ax=ax, pos=pos_below, labels=node_voltage_labels, font_size=1)
     nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=0.5, edge_color='black')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=1, edge_color='blue')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=1, edge_color='red')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=1, edge_color='red')
-    nx.draw_networkx_edge_labels(graph, ax=ax, pos=pos, edge_labels=edge_labels, font_size=4, rotate=False)
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=0.5, edge_color='blue')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=0.5, edge_color='red')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=0.5, edge_color='red')
+    nx.draw_networkx_edge_labels(graph, ax=ax, pos=pos, edge_labels=edge_labels, font_size=1, rotate=False)
     plt.axis('off')
 
     filename = os.path.join(network.diagrams_dir, f'{network.name}_{network.year}_{network.day}.pdf')

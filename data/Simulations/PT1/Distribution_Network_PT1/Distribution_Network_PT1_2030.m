@@ -218,7 +218,7 @@ mpc.capacitor_bank_dplan = {
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	ID				
 mpc.gen = [																										
 	2	0	0	10000	-10000	1	100	1	9999	-9999	0	0	0	0	0	0	0	0	0	0	0	1;				
-	42	0.000	0.000	0.000	0.000	1.00	100	1	2.300	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	42	0.000	0.000	0.000	0.000	1.00	100	1	4.59	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];
 
 % Generation Technology Type:

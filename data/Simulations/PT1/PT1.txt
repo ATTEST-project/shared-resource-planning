@@ -1,4 +1,4 @@
-Years: 3
+Years: 1
 2020	10
 2030	10
 2040	10
@@ -14,11 +14,12 @@ Discount Factor: 0.03
 Market Data
 PT1_market_data
 
-Distribution Networks: 1
-Distribution_Network_PT4	Distribution_Network_PT4_params.txt	29
-Distribution_Network_PT3	Distribution_Network_PT3_params.txt	29
-Distribution_Network_PT1	Distribution_Network_PT1_params.txt	29
-Distribution_Network_PT2	Distribution_Network_PT2_params.txt	30
+Distribution Networks: 5
+Distribution_Network_PT1	Distribution_Network_PT1_params.txt	1
+Distribution_Network_PT2	Distribution_Network_PT2_params.txt	2
+Distribution_Network_PT3	Distribution_Network_PT3_params.txt	3
+Distribution_Network_PT4	Distribution_Network_PT4_params.txt	4
+Distribution_Network_PT5	Distribution_Network_PT5_params.txt	5
 
 Transmission Network
 Transmission_Network_PT	Transmission_Network_PT_params.txt

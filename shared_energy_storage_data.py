@@ -538,9 +538,24 @@ def _optimize(model, params, from_warm_start=False):
         solver.options['output_file'] = 'optim_log.txt'
 
     if params.solver == 'ipopt':
-        solver.options['linear_solver'] = params.linear_solver
+
+        solver.options['tol'] = params.solver_tol
+        solver.options['dual_inf_tol'] = 1 / params.solver_tol * 1e1
+        solver.options['constr_viol_tol'] = params.solver_tol * 1e1
+        solver.options['compl_inf_tol'] = params.solver_tol * 1e1
+
+        solver.options['acceptable_tol'] = params.solver_tol * 1e1
+        solver.options['acceptable_iter'] = 5
+        solver.options['acceptable_dual_inf_tol'] = 1 / (params.solver_tol * 1e2)
+        solver.options['acceptable_constr_viol_tol'] = params.solver_tol * 1e2
+        solver.options['acceptable_compl_inf_tol'] = params.solver_tol * 1e2
+
+        solver.options['s_max'] = 0.10
         solver.options['max_iter'] = 10000
         solver.options['nlp_scaling_method'] = 'none'
+        solver.options['fixed_variable_treatment'] = 'relax_bounds'
+
+        solver.options['linear_solver'] = params.linear_solver
 
     result = solver.solve(model, tee=params.verbose)
 

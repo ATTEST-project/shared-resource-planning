@@ -36,12 +36,12 @@ class NetworkPlanning:
         return network_models
 
     def optimize(self, model, from_warm_start=False):
-        print(f'[INFO] \t - Running SMOPF, Network {self.name}...')
+        print(f'[INFO] \t\t\t - Running SMOPF, Network {self.name}...')
         results = dict()
         for year in self.years:
             results[year] = dict()
             for day in self.days:
-                print(f'[INFO] \t\t - Year {year}, Day {day}...')
+                print(f'[INFO] \t\t\t\t - Year {year}, Day {day}...')
                 results[year][day] = self.network[year][day].run_smopf(model[year][day], self.params, from_warm_start=from_warm_start)
         return results
 

@@ -43,8 +43,3 @@ class Generator:
         if self.gen_type in GEN_CURTAILLABLE_TYPES:
             return True
         return False
-
-    def is_conventional(self):
-        if self.gen_type in GEN_CONVENTIONAL_TYPES:
-            return True
-        return False

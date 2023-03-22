@@ -57,8 +57,49 @@ def shared_resources_planning(working_directory, specification_filename):
 
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
-    planning_problem.plot_diagram()
+    #planning_problem.plot_diagram()
     planning_problem.run_planning_problem()
+
+    '''
+    transmission_network = planning_problem.transmission_network
+    tn_model = transmission_network.build_model()
+    results = transmission_network.optimize(tn_model)
+    processed_results = transmission_network.process_results(tn_model, results)
+    transmission_network.write_optimization_results_to_excel(processed_results)
+    '''
+
+    '''
+    distribution_networks = planning_problem.distribution_networks
+    for node_id in distribution_networks:
+        distribution_network = distribution_networks[node_id]
+        dn_model = distribution_network.build_model()
+        results = distribution_network.optimize(dn_model)
+        processed_results = distribution_network.process_results(dn_model, results)
+        distribution_network.write_optimization_results_to_excel(processed_results)
+    '''
+
+    '''
+    import time
+    candidate_solution = {'investment': {}, 'total_capacity': {}}
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution['investment'][node_id] = dict()
+        candidate_solution['total_capacity'][node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution['investment'][node_id][year] = dict()
+            candidate_solution['investment'][node_id][year]['s'] = 1.00
+            candidate_solution['investment'][node_id][year]['e'] = 1.00
+            candidate_solution['total_capacity'][node_id][year] = dict()
+            candidate_solution['total_capacity'][node_id][year]['s'] = 1.00
+            candidate_solution['total_capacity'][node_id][year]['e'] = 1.00
+    shared_ess_data = planning_problem.shared_ess_data
+    esso_model = shared_ess_data.build_subproblem()
+    shared_ess_data.update_model_with_candidate_solution(esso_model, candidate_solution['total_capacity'])
+    start = time.time()
+    shared_ess_data.optimize(esso_model)
+    end = time.time()
+    print(f'[INFO] Elapsed time: {end - start}')
+    '''
 
     print('==========================================================================================================')
     print('                                               END                                                        ')
@@ -70,11 +111,15 @@ def shared_resources_planning(working_directory, specification_filename):
 # ============================================================================cal==========================================
 if __name__ == '__main__':
 
+    '''
     filename, test_case = read_execution_arguments(sys.argv[1:])
     directory = os.path.join(os.getcwd(), 'data', test_case)
     shared_resources_planning(directory, filename)
+    '''
 
-
+    filename = 'HR1.txt'
+    directory = os.path.join(os.getcwd(), 'data', 'HR1_new')
+    shared_resources_planning(directory, filename)
 
 
 
