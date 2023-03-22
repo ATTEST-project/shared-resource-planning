@@ -2097,28 +2097,31 @@ def _pre_process_network(network):
             for branch in connected_parallel_branches:
                 processed_branches.append(branch)
 
-    final_num_nodes = len(processed_nodes)
     network.nodes = processed_nodes
+    network.generators = processed_gens
+    network.branches = processed_branches
+    for branch in network.branches:
+        branch.pre_processed = False
+
+    '''
+    final_num_nodes = len(processed_nodes)
     num_nodes_removed = initial_num_nodes - final_num_nodes
     if num_nodes_removed > 0:
         print(f'[INFO] Pre-processing: Network {network.name}, year {network.year}, day {network.day}. '
               f'A Total of {num_nodes_removed} nodes were removed/fused!')
 
     final_num_generators = len(processed_gens)
-    network.generators = processed_gens
     num_gens_removed = initial_num_gens - final_num_generators
     if num_gens_removed > 0:
         print(f'[INFO] Pre-processing: Network {network.name}, year {network.year}, day {network.day}. '
               f'A Total of {num_gens_removed} generators were removed!')
 
     final_num_branches = len(processed_branches)
-    network.branches = processed_branches
     num_branches_removed = initial_num_branches - final_num_branches
     if num_branches_removed > 0:
         print(f'[INFO] Pre-processing. Network {network.name}, year {network.year}, day {network.day}. '
               f'A Total of {num_branches_removed} branches were removed/fused!')
-    for branch in network.branches:
-        branch.pre_processed = False
+    '''
 
 
 def _pre_process_parallel_branches(branches):
