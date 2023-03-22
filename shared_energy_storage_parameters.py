@@ -12,6 +12,7 @@ class SharedEnergyStorageParameters:
         self.max_capacity = 2.50                    # Max energy capacity (related to space constraints)
         self.min_pe_factor = 0.10                   # Minimum S/E factor (related to the ESS technology)
         self.max_pe_factor = 4.00                   # Maximum S/E factor (related to the ESS technology)
+        self.ess_relax = True                       # Charging/Discharging modeling method (True: McCormick envelopes, False: NLP model)
         self.plot_results = False                   # Plot results
         self.print_results_to_file = False          # Write results to file
         self.verbose = False                        # Verbose -- Bool
@@ -45,6 +46,8 @@ def _read_parameters_from_file(planning_parameters, filename):
                 elif param_type == 'max_pe_factor':
                     if is_number(tokens[1].strip()):
                         planning_parameters.max_pe_factor = float(tokens[1].strip())
+                elif param_type == 'ess_relax':
+                    planning_parameters.ess_relax = read_bool_parameter(tokens[1])
                 elif param_type == 'plot_results':
                     planning_parameters.plot_results = read_bool_parameter(tokens[1])
                 elif param_type == 'print_results_to_file':

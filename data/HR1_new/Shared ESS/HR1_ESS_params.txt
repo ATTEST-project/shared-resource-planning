@@ -2,6 +2,7 @@ budget = 1e6
 max_capacity = 2.50
 min_pe_factor = 0.10
 max_pe_factor = 4.00
+ess_relax = False
 plot_results = False
 print_results_to_file = True
 solver = "ipopt"

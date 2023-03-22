@@ -218,6 +218,9 @@ def _run_operational_planning(planning_problem, candidate_solution):
 
     # ------------------------------------------------------------------------------------------------------------------
     # 0. Initialization
+
+    print('[INFO]\t\t - Initializing...')
+
     #start = time.time()
     primal_evolution = list()
 
