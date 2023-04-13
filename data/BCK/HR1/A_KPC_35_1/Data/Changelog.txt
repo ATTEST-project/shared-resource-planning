@@ -1,0 +1,4 @@
+14 June 2022 - Load bus numbering corrected
+22 August 2022 - Real power for node 20 changed from "-" to + sign
+	       - Added voltage profile for 110 kV nodes (1,9 and 31)
+	       - Modified A_KPC_35_v2: voltage bounds on 10 kV buses reduced 

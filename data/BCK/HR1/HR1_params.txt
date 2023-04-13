@@ -1,0 +1,16 @@
+Benders
+benders_tol_abs = 1e3
+benders_tol_rel = 1e-2
+benders_num_max_iters = 1000
+
+ADMM
+admm_tol = 5e-2
+admm_num_max_iters = 100
+rho
+Location1 = 0.10
+A_BJ_35_1 = 0.10
+A_BJ_35_2 = 0.10
+A_KPC_35_1 = 0.10
+A_KPC_35_2 = 0.10
+A_KPC_35_3 = 0.10
+ESSO = 0.10
