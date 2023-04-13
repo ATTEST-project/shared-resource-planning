@@ -57,7 +57,7 @@ def shared_resources_planning(working_directory, specification_filename):
 
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
-    #planning_problem.plot_diagram()
+    planning_problem.plot_diagram()
     planning_problem.run_planning_problem()
 
     '''
@@ -108,7 +108,7 @@ def shared_resources_planning(working_directory, specification_filename):
 
 # ======================================================================================================================
 #  Main
-# ============================================================================cal==========================================
+# ======================================================================================================================
 if __name__ == '__main__':
 
     '''
@@ -118,9 +118,5 @@ if __name__ == '__main__':
     '''
 
     filename = 'HR1.txt'
-    directory = os.path.join(os.getcwd(), 'data', 'HR1_new')
+    directory = os.path.join(os.getcwd(), 'data', 'HR1')
     shared_resources_planning(directory, filename)
-
-
-
-

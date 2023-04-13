@@ -12,16 +12,16 @@ mpc.baseMVA = 100;
 %% bus data													
 %	bus_i	type	Pd	Qd	Gs	Bs	area	Vm	Va	baseKV	zone	Vmax	Vmin
 mpc.bus = [													
-31	3	0	0	0	0	1	1	0	110	1	1.1	0.9;
-32	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
-33	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
-34	1	4	0.15	0	0	1	1	0	35	1	1.1	0.9;
-35	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
-36	1	1	0.2	0	0	1	1	0	10	1	1.05	0.95;
-37	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
-38	1	5.6	0.4	0	0	1	1	0	10	1	1.05	0.95;
-39	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
-40	1	3.3	-0.3	0	0	1	1	0	10	1	1.05	0.95;
+	31	3	0	0	0	0	1	1	0	110	1	1.1	0.9;
+	32	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
+	33	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
+	34	1	4	0.15	0	0	1	1	0	35	1	1.1	0.9;
+	35	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
+	36	1	1	0.2	0	0	1	1	0	10	1	1.05	0.95;
+	37	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
+	38	1	5.6	0.4	0	0	1	1	0	10	1	1.05	0.95;
+	39	1	0	0	0	0	1	1	0	35	1	1.1	0.9;
+	40	1	3.3	-0.3	0	0	1	1	0	10	1	1.05	0.95;
 ];													
 
 %% branch data														
@@ -46,6 +46,40 @@ mpc.branch = [
 %% generator data
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	
 mpc.gen = [																						
-31	0	0	40	-40     1.05	100	1	40	-40	0	0	0	0	0	0	0	0	0	0	0;
-36	1	0	0.7	-0.7	1       100	1	1.6	0	0	0	0	0	0	0	0	0	0	0	0;
+	31	0	0	40	-40     1.05	100	1	40	-40	0	0	0	0	0	0	0	0	0	0	0;
+	36	1	0	0.7	-0.7	1       100	1	1.6	0	0	0	0	0	0	0	0	0	0	0	0;
+	34	0.000	0.000	0.000	0.000	1.000	100	1	4.66	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	36	0.000	0.000	0.000	0.000	1.000	100	1	1.17	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	38	0.000	0.000	0.000	0.000	1.000	100	1	6.53	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	40	0.000	0.000	0.000	0.000	1.000	100	1	3.85	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];																						
+
+% Generation Technology Type:
+%  CWS (Connection with Spain),
+%  FOG (Fossil Gas),
+%  FHC (Fossil Hard Coal),
+%  HWR (Hydro Water Reservoir),
+%  HPS (Hydro Pumped Storage),
+%  HRP (Hydro Run-of-river and poundage),
+%  SH1 (Small Hydro - P ≤ 10 MW),
+%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW),
+%  PVP (Photovoltaic power plant),
+%  WON (Wind onshore),
+%  WOF (Wind offshore),
+%  MAR (Marine),
+%  OTH (Other thermal, such as geothermal, biomass, biogas, Municipal solid waste and CHP renewable and non-renewable)
+%  REF (Reference node)
+%	genType
+mpc.gen_tags = {
+	'REF';	'FOG';	'PVP';	'PVP';	'PVP';	'PVP';
+};							 
+
+%% energy storage
+%	Bus	S, [MW]	E, [MWh]	Einit, [MWh]	EffCh	EffDch	MaxPF	MinPF
+mpc.energy_storage = [
+	34	2.332	2.332	1.166	0.90	0.90	0.80	-0.80;
+	36	0.583	0.583	0.2915	0.90	0.90	0.80	-0.80;
+	38	3.26425	3.26425	1.632125	0.90	0.90	0.80	-0.80;
+	40	1.925	1.925	0.9625	0.90	0.90	0.80	-0.80;
+];
+

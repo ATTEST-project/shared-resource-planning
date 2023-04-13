@@ -123,8 +123,6 @@ def _run_planning_problem(planning_problem):
             candidate_solution['total_capacity'][node_id][year]['s'] = 0.00
             candidate_solution['total_capacity'][node_id][year]['e'] = 0.00
 
-    print(f'[INFO] Iter {iter}. LB = {lower_bound}, UB = {upper_bound}')
-
     # 0.1. Models creation and initialization
     # - Create and warm-start master and subproblem models
     start = time.time()
@@ -133,9 +131,9 @@ def _run_planning_problem(planning_problem):
     # Benders' main cycle
     while iter < benders_parameters.num_max_iters and not convergence:
 
-        print(f'================================================== ITERATION #{iter} =================================================')
-
+        print(f'=============================================== ITERATION #{iter} ==============================================')
         print(f'[INFO] Iter {iter}. LB = {lower_bound}, UB = {upper_bound}')
+
         _print_candidate_solution(candidate_solution)
 
         # 1. Subproblem
@@ -311,7 +309,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
     else:
         print(f'[INFO] \t - ADMM converged in {iter + 1} iterations.')
 
-    # Used in the outer cycle
+    # Used in the outer (Benders') cycle
     sensitivities = shared_ess_data.get_sensitivities(esso_model)
     optim_models = {'tso': tso_model, 'dso': dso_models, 'esso': esso_model}
 
@@ -698,7 +696,7 @@ def update_distribution_coordination_models_and_solve(distribution_networks, mod
         distribution_network = distribution_networks[node_id]
         rho = params.rho[distribution_network.name]
 
-        print('[INFO] \t\t\t . Updating active distribution network connected to node {}...'.format(node_id))
+        print('[INFO] \t\t\t - Updating active distribution network connected to node {}...'.format(node_id))
 
         for year in distribution_network.years:
             for day in distribution_network.days:
@@ -1538,7 +1536,7 @@ def _write_bound_evolution_to_excel(workbook, bound_evolution):
 
     lower_bound = bound_evolution['lower_bound']
     upper_bound = bound_evolution['upper_bound']
-    num_lines = max(len(upper_bound), max(lower_bound))
+    num_lines = max(len(upper_bound), len(lower_bound))
 
     num_style = '0.00'
 
@@ -2886,7 +2884,7 @@ def _write_network_branch_results_to_excel(planning_problem, workbook, results, 
     elif result_type == 'ratio':
         sheet_name = 'Transformer Ratio'
     elif result_type == 'current_perc':
-        sheet_name = 'Current'
+        sheet_name = 'Branch Loading'
     sheet = workbook.create_sheet(sheet_name)
 
     row_idx = 1

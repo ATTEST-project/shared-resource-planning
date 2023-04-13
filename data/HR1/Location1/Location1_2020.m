@@ -95,7 +95,6 @@ mpc.gen_tags = {
 	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';
 };
 
-
 %% branch data
 %	fbus	tbus	r	x	b	rateA	rateB	rateC	ratio	angle	status	angmin	angmax
 mpc.branch = [
@@ -148,38 +147,3 @@ mpc.branch = [
 	29	30	0.04191	0.524328	0	20	24	24	1.03030303	0	0	-360	360;
 	29	30	0.0256818	0.531198	0	22	26.4	26.4	1.03030303	0	1	-360	360;
 ];
-
-%% bus names
-mpc.bus_name = {
-	'SUBST01     ';
-	'SUBST02     ';
-	'SUBST3      ';
-	'SUBST4      ';
-	'SUBST5      ';
-	'SUBST7      ';
-	'SUBST8      ';
-	'SUBST9      ';
-	'SUBST10     ';
-	'SUBST11     ';
-	'SUBST12     ';
-	'SUBST13     ';
-	'SUBST14     ';
-	'SUBST15     ';
-	'SUBST16     ';
-	'SUBST17     ';
-	'SUBST18     ';
-	'SUBST19     ';
-	'SUBST20     ';
-	'SUBST21     ';
-	'SUBST26     ';
-	'SUBST29     ';
-	'SUBST30     ';
-	'SUBST34     ';
-	'SUBST35     ';
-	'SUBST36     ';
-	'SUBST42     ';
-	'SUBST55     ';
-	'SUBST68     ';
-	'SUBST72     ';
-	'SUBST103    ';
-};

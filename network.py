@@ -581,6 +581,7 @@ def _build_model(network, params):
                             model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] <= energy_storage.s * pdch)
                             model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] >= energy_storage.s * pch + energy_storage.s * pdch - energy_storage.s**2)
                         else:
+                            # NLP formulation
                             model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
 
                     con_day_balance = model.es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
@@ -630,7 +631,8 @@ def _build_model(network, params):
                         model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] <= pdch_max * pch)
                         model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] >= pdch_max * pch + pch_max * pdch - pch_max * pdch_max)
                     else:
-                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch >= 0.0)
+                        # NLP model
+                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch == 0.0)
 
                 con_day_balance = model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
                 model.shared_energy_storage_day_balance.add(con_day_balance)

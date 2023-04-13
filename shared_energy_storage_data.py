@@ -241,7 +241,8 @@ def _build_subproblem_model(shared_ess_data):
     model.es_p_dch = pe.Var(model.energy_storages, model.years, model.days, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     model.es_p_up = pe.Var(model.energy_storages, model.years, model.days, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
     model.es_p_down = pe.Var(model.energy_storages, model.years, model.days, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals)
-    model.es_beta_p = pe.Var(model.energy_storages, model.years, model.days, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Binary)
+    if shared_ess_data.params.ess_relax:
+        model.es_w = pe.Var(model.energy_storages, model.years, model.days, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.0)
     model.es_expected_p = pe.Var(model.energy_storages, model.years, model.days, model.periods, domain=pe.Reals)
     model.p_up_total = pe.Var(model.years, model.days, model.periods, domain=pe.NonNegativeReals)
     model.p_down_total = pe.Var(model.years, model.days, model.periods, domain=pe.NonNegativeReals)
@@ -391,7 +392,6 @@ def _build_subproblem_model(shared_ess_data):
                             pdch = model.es_p_dch[e, y, d, s_m, s_o, p]
                             pup = model.es_p_up[e, y, d, s_m, s_o, p]
                             pdown = model.es_p_down[e, y, d, s_m, s_o, p]
-                            beta_p = model.es_beta_p[e, y, d, s_m, s_o, p]
 
                             if p > 0:
                                 con_balance = model.es_soc[e, y, d, s_m, s_o, p] - model.es_soc[e, y, d, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
@@ -401,8 +401,14 @@ def _build_subproblem_model(shared_ess_data):
                                 model.energy_storage_balance.add(con_balance)
 
                             # Charging/dischaging exclusivity constraint
-                            model.energy_storage_ch_dch_exclusion.add(pch <= beta_p * pch_max)
-                            model.energy_storage_ch_dch_exclusion.add(pdch <= (1 - beta_p) * pdch_max)
+                            if shared_ess_data.params.ess_relax:
+                                # McCormick envelopes
+                                model.energy_storage_ch_dch_exclusion.add(model.es_w[e, y, d, s_m, s_o, p] <= model.es_s_rated[e, y] * pch)
+                                model.energy_storage_ch_dch_exclusion.add(model.es_w[e, y, d, s_m, s_o, p] <= model.es_s_rated[e, y] * pdch)
+                                model.energy_storage_ch_dch_exclusion.add(model.es_w[e, y, d, s_m, s_o, p] >= model.es_s_rated[e, y] * pch + model.es_s_rated[e, y] * pdch - model.es_s_rated[e, y] ** 2)
+                            else:
+                                # NLP formulation
+                                model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
 
                             # Secondary reserve -- Bands bounds
                             model.secondary_reserve.add(pdown <= pdch_max - pdch)

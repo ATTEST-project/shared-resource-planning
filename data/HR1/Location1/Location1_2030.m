@@ -73,6 +73,8 @@ mpc.gen = [
 	34	37.202	0.049	21	-12.6	1.04461	42	1	40	15	0	0	0	0	0	0	0	0	0	0	0;
 	36	0	0	20	-8.4	1.04442	42	0	40	0.01	0	0	0	0	0	0	0	0	0	0	0;
 	36	38.287	3.142	20	-8.4	1.04442	42	1	40	0.01	0	0	0	0	0	0	0	0	0	0	0;
+	4	0.000	0.000	0.000	0.000	1.000	100	1	122.50	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	16	0.000	0.000	0.000	0.000	1.000	100	1	122.50	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];
 
 % Generation Technology Type:
@@ -92,7 +94,7 @@ mpc.gen = [
 %  REF (Reference node -- for DNs)
 %	genType
 mpc.gen_tags = {
-	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';
+	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'FOG';	'PVP';	'PVP';
 };
 
 %% branch data
@@ -148,37 +150,10 @@ mpc.branch = [
 	29	30	0.0256818	0.531198	0	22	26.4	26.4	1.03030303	0	1	-360	360;
 ];
 
-%% bus names
-mpc.bus_name = {
-	'SUBST01     ';
-	'SUBST02     ';
-	'SUBST3      ';
-	'SUBST4      ';
-	'SUBST5      ';
-	'SUBST7      ';
-	'SUBST8      ';
-	'SUBST9      ';
-	'SUBST10     ';
-	'SUBST11     ';
-	'SUBST12     ';
-	'SUBST13     ';
-	'SUBST14     ';
-	'SUBST15     ';
-	'SUBST16     ';
-	'SUBST17     ';
-	'SUBST18     ';
-	'SUBST19     ';
-	'SUBST20     ';
-	'SUBST21     ';
-	'SUBST26     ';
-	'SUBST29     ';
-	'SUBST30     ';
-	'SUBST34     ';
-	'SUBST35     ';
-	'SUBST36     ';
-	'SUBST42     ';
-	'SUBST55     ';
-	'SUBST68     ';
-	'SUBST72     ';
-	'SUBST103    ';
-};
+%% energy storage
+%	Bus	S, [MW]	E, [MWh]	Einit, [MWh]	EffCh	EffDch	MaxPF	MinPF
+mpc.energy_storage = [
+	6	8.75	8.75	4.375	0.90	0.90	0.80	-0.80;
+	12	8.75	8.75	4.375	0.90	0.90	0.80	-0.80;
+	18	8.75	8.75	4.375	0.90	0.90	0.80	-0.80;
+];
