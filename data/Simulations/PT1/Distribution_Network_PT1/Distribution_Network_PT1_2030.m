@@ -217,24 +217,24 @@ mpc.capacitor_bank_dplan = {
 %% generator data																										
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	ID				
 mpc.gen = [																										
-	2	0	0	10000	-10000	1	100	1	9999	-9999	0	0	0	0	0	0	0	0	0	0	0	1;				
-	42	0.000	0.000	0.000	0.000	1.00	100	1	4.59	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	2	0	0	10000	-10000	1	100	1	9999	-9999	0	0	0	0	0	0	0	0	0	0	0	1;
+	42	0.000	0.000	0.000	0.000	1.000	100	1	4.59	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];
 
 % Generation Technology Type:
-%  CWS (Connection with Spain).
-%  FOG (Fossil Gas).
-%  FHC (Fossil Hard Coal).
-%  HWR (Hydro Water Reservoir).
-%  HPS (Hydro Pumped Storage).
-%  HRP (Hydro Run-of-river and poundage).
-%  SH1 (Small Hydro - P ≤ 10 MW).
-%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW).
-%  PVP (Photovoltaic power plant).
-%  WON (Wind onshore).
-%  WOF (Wind offshore).
-%  MAR (Marine).
-%  OTH (Other thermal. such as geothermal. biomass. biogas. Municipal solid waste and CHP renewable and non-renewable)
+%  CWS (Connection with Spain),
+%  FOG (Fossil Gas),
+%  FHC (Fossil Hard Coal),
+%  HWR (Hydro Water Reservoir),
+%  HPS (Hydro Pumped Storage),
+%  HRP (Hydro Run-of-river and poundage),
+%  SH1 (Small Hydro - P ≤ 10 MW),
+%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW),
+%  PVP (Photovoltaic power plant),
+%  WON (Wind onshore),
+%  WOF (Wind offshore),
+%  MAR (Marine),
+%  OTH (Other thermal, such as geothermal, biomass, biogas, Municipal solid waste and CHP renewable and non-renewable)
 %  REF (Reference node -- for DNs)
 %	genType
 mpc.gen_tags = {
@@ -449,7 +449,7 @@ mpc.gencost = [
 mpc.trans=[2	1	0.8353	1.17	23	12];																					
 																										
 %% energy storage
-%	Bus	S. [MW]	E. [MWh]	Einit. [MWh]	EffCh	EffDch	MaxPF	MinPF
+%	Bus	S, [MW]	E, [MWh]	Einit, [MWh]	EffCh	EffDch	MaxPF	MinPF
 mpc.energy_storage = [
-	42	0.460	0.460	0.230	0.90	0.90	0.80	-0.80;
+	42	0.46	0.46	0.23	0.90	0.90	0.80	-0.80;
 ];

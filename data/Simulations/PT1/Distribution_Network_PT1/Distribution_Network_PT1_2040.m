@@ -217,24 +217,24 @@ mpc.capacitor_bank_dplan = {
 %% generator data																										
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	ID				
 mpc.gen = [																										
-	2	0	0	10000	-10000	1	100	1	9999	-9999	0	0	0	0	0	0	0	0	0	0	0	1;				
-	42	0.000	0.000	0.000	0.000	1.00	100	1	6.07	0.00	0	0	0	0	0	0	0	0	0	0	0;
+	2	0	0	10000	-10000	1	100	1	9999	-9999	0	0	0	0	0	0	0	0	0	0	0	1;
+	42	0.000	0.000	0.000	0.000	1.000	100	1	6.07	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];
 
 % Generation Technology Type:
-%  CWS (Connection with Spain).
-%  FOG (Fossil Gas).
-%  FHC (Fossil Hard Coal).
-%  HWR (Hydro Water Reservoir).
-%  HPS (Hydro Pumped Storage).
-%  HRP (Hydro Run-of-river and poundage).
-%  SH1 (Small Hydro - P ≤ 10 MW).
-%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW).
-%  PVP (Photovoltaic power plant).
-%  WON (Wind onshore).
-%  WOF (Wind offshore).
-%  MAR (Marine).
-%  OTH (Other thermal. such as geothermal. biomass. biogas. Municipal solid waste and CHP renewable and non-renewable)
+%  CWS (Connection with Spain),
+%  FOG (Fossil Gas),
+%  FHC (Fossil Hard Coal),
+%  HWR (Hydro Water Reservoir),
+%  HPS (Hydro Pumped Storage),
+%  HRP (Hydro Run-of-river and poundage),
+%  SH1 (Small Hydro - P ≤ 10 MW),
+%  SH3 (Small Hydro - 10 MW < P ≤ 30 MW),
+%  PVP (Photovoltaic power plant),
+%  WON (Wind onshore),
+%  WOF (Wind offshore),
+%  MAR (Marine),
+%  OTH (Other thermal, such as geothermal, biomass, biogas, Municipal solid waste and CHP renewable and non-renewable)
 %  REF (Reference node -- for DNs)
 %	genType
 mpc.gen_tags = {
@@ -347,7 +347,7 @@ mpc.branch = [
 	124	107	0.00233	0.00126	0.000000748	9.25	6.9109	9.2492	0	0	1	-360	360	0	0	0	0	0	0	0	0	0.0028	0.00499	0.000000374	28.7	1;
 	164	119	0.00583	0.00314	0.00000187	9.25	6.9109	9.2492	0	0	1	-360	360	0	0	0	0	0	0	0	0	0.00701	0.0125	0.000000936	71.76	1;
 	2	1	0.0111	0.387	0	31.5	31.5	31.5	1.00035	0	1	-360	360	1.5036	12	1	23	12	0.9521	0	0	0.199	0.18	0	0	1;
-	2	1	0.0111	0.387	0	31.5	31.5	31.5	1.00035	0	1	-360	360	1.5036	12	1	23	12	0.9521	0	0	0.199	0.18	0	0	1;					% Added
+	2	1	0.0111	0.387	0	31.5	31.5	31.5	1.00035	0	1	-360	360	1.5036	12	1	23	12	0.9521	0	0	0.199	0.18	0	0	1;						% Added
 	184	127	0.0158	0.00852	0.00000508	9.25	6.9109	9.2492	0	0	1	-360	360	0	0	0	0	0	0	0	0	0.019	0.0338	0.00000254	194.65	1;
 	153	183	0.00599	0.00323	0.00000192	9.25	6.9109	9.2492	0	0	1	-360	360	0	0	0	0	0	0	0	0	0.0072	0.0128	0.000000962	73.76	1;
 	185	119	0.00672	0.0104	0.00000763	18.8	13.562	18.8101	0	0	1	-360	360	0	0	0	0	0	0	0	0	0.0111	0.0447	0.00000381	263.63	1;
@@ -451,7 +451,7 @@ mpc.gencost = [
 mpc.trans=[2	1	0.8353	1.17	23	12];																					
 																										
 %% energy storage
-%	Bus	S. [MW]	E. [MWh]	Einit. [MWh]	EffCh	EffDch	MaxPF	MinPF
+%	Bus	S, [MW]	E, [MWh]	Einit, [MWh]	EffCh	EffDch	MaxPF	MinPF
 mpc.energy_storage = [
 	42	3.05	3.05	1.525	0.90	0.90	0.80	-0.80;
 ];

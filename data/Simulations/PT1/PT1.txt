@@ -1,11 +1,12 @@
-Years: 2
+Years: 4
 2020	10
 2030	10
 2040	10
 2050	10
 
-Days: 1
-Winter	365
+Days: 2
+Summer	183
+Winter	182
 
 NumInstants: 24
 
