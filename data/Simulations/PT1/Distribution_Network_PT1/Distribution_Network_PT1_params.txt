@@ -4,6 +4,7 @@ es_reg = False
 fl_reg = False
 rg_curt = False
 l_curt = False
+fl_relax = False
 ess_relax = False
 enforce_vg = True
 slack_line_limits = True
