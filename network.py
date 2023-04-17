@@ -887,6 +887,21 @@ def _build_model(network, params):
                             slack_iij_sqr = model.slack_iij_sqr[b, s_m, s_o, p]
                             obj_scenario += COST_SLACK_BRANCH_FLOW * network.baseMVA * slack_iij_sqr
 
+                # Energy storage charging/discharging exclusion
+                if params.ess_relax:
+
+                    for e in model.energy_storages:
+                        for p in model.periods:
+                            pch = model.es_pch[e, s_m, s_o, p]
+                            pdch = model.es_pdch[e, s_m, s_o, p]
+                            obj_scenario += COST_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
+
+                    for e in model.shared_energy_storages:
+                        for p in model.periods:
+                            pch = model.shared_es_pch[e, s_m, s_o, p]
+                            pdch = model.shared_es_pdch[e, s_m, s_o, p]
+                            obj_scenario += COST_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
+
                 obj += obj_scenario * omega_market * omega_oper
 
         model.objective = pe.Objective(sense=pe.minimize, expr=obj)
@@ -933,6 +948,21 @@ def _build_model(network, params):
                             qc_curt = model.qc_curt[i, s_m, s_o, p]
                             obj_scenario += PENALTY_LOAD_CURTAILMENT * pc_curt
                             obj_scenario += PENALTY_LOAD_CURTAILMENT * qc_curt
+
+                # Energy storage charging/discharging exclusion
+                if params.ess_relax:
+
+                    for e in model.energy_storages:
+                        for p in model.periods:
+                            pch = model.es_pch[e, s_m, s_o, p]
+                            pdch = model.es_pdch[e, s_m, s_o, p]
+                            obj_scenario += PENALTY_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
+
+                    for e in model.shared_energy_storages:
+                        for p in model.periods:
+                            pch = model.shared_es_pch[e, s_m, s_o, p]
+                            pdch = model.shared_es_pdch[e, s_m, s_o, p]
+                            obj_scenario += PENALTY_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
 
                 obj += obj_scenario * omega_market * omega_oper
 
