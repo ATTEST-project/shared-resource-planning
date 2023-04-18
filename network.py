@@ -536,15 +536,17 @@ def _build_model(network, params):
 
     # - Flexible Loads -- Daily energy balance
     if params.fl_reg:
-        model.fl_p_balance = pe.ConstraintList()
-        for i in model.nodes:
-            for s_m in model.scenarios_market:
-                for s_o in model.scenarios_operation:
-                    p_up, p_down = 0.0, 0.0
-                    for p in model.periods:
-                        p_up += model.flex_p_up[i, s_m, s_o, p]
-                        p_down += model.flex_p_down[i, s_m, s_o, p]
-                    model.fl_p_balance.add(p_up == p_down)
+        if not params.fl_relax:
+            # - FL energy balance added as a strict constraint
+            model.fl_p_balance = pe.ConstraintList()
+            for i in model.nodes:
+                for s_m in model.scenarios_market:
+                    for s_o in model.scenarios_operation:
+                        p_up, p_down = 0.0, 0.0
+                        for p in model.periods:
+                            p_up += model.flex_p_up[i, s_m, s_o, p]
+                            p_down += model.flex_p_down[i, s_m, s_o, p]
+                        model.fl_p_balance.add(p_up == p_down)
 
     # - Energy Storage constraints
     if params.es_reg:
@@ -902,6 +904,16 @@ def _build_model(network, params):
                             pdch = model.shared_es_pdch[e, s_m, s_o, p]
                             obj_scenario += COST_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
 
+                # Flexible loads energy balance constraint
+                if params.fl_reg:
+                    if params.fl_relax:
+                        for i in model.nodes:
+                            p_up, p_down = 0.0, 0.0
+                            for p in model.periods:
+                                p_up += model.flex_p_up[i, s_m, s_o, p]
+                                p_down += model.flex_p_down[i, s_m, s_o, p]
+                            obj_scenario += COST_FLEX_LOAD_ENERGY_BALANCE_CONS * network.baseMVA * (p_up - p_down)
+
                 obj += obj_scenario * omega_market * omega_oper
 
         model.objective = pe.Objective(sense=pe.minimize, expr=obj)
@@ -950,7 +962,7 @@ def _build_model(network, params):
                             obj_scenario += PENALTY_LOAD_CURTAILMENT * qc_curt
 
                 # Energy storage charging/discharging exclusion
-                if params.ess_relax:
+                if params.es_reg and params.ess_relax:
 
                     for e in model.energy_storages:
                         for p in model.periods:
@@ -963,6 +975,16 @@ def _build_model(network, params):
                             pch = model.shared_es_pch[e, s_m, s_o, p]
                             pdch = model.shared_es_pdch[e, s_m, s_o, p]
                             obj_scenario += PENALTY_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
+
+                # Flexible loads energy balance constraint
+                if params.fl_reg:
+                    if params.fl_relax:
+                        for i in model.nodes:
+                            p_up, p_down = 0.0, 0.0
+                            for p in model.periods:
+                                p_up += model.flex_p_up[i, s_m, s_o, p]
+                                p_down += model.flex_p_down[i, s_m, s_o, p]
+                            obj_scenario += PENALTY_FLEX_LOAD_ENERGY_BALANCE_CONS * network.baseMVA * (p_up - p_down)
 
                 obj += obj_scenario * omega_market * omega_oper
 

@@ -5,6 +5,7 @@ fl_reg = True
 rg_curt = True
 l_curt = False
 ess_relax = False
+fl_relax = False
 enforce_vg = False
 slack_line_limits = True
 slack_voltage_limits = True

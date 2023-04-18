@@ -509,7 +509,7 @@ def _build_subproblem_model(shared_ess_data):
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_up[year][day][s_m][p] * pup * r_up_activ)         # Revenue secondary reserve upward activation (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)   # Revenue secondary reserve downward activation (negative)
                             if shared_ess_data.params.ess_relax:
-                                operational_cost += annualization * num_years * num_days * prob_market * prob_operation * COST_ENERGY_STORAGE_CONS * (pch - pdch)                # Energy storage charging/discharging exclusion
+                                operational_cost += annualization * num_years * num_days * prob_market * prob_operation * COST_ENERGY_STORAGE_CONS * (pch * pdch)                # Energy storage charging/discharging exclusion
 
             # Slack Penalty
             slack_penalty += 1e7 * model.slack_up[e, y]

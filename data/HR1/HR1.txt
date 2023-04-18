@@ -15,12 +15,12 @@ Discount Factor: 0.03
 Market Data
 HR1_market_data
 
-Distribution Networks: 5
-A_BJ_35_1	A_BJ_35_1_params.txt	1
-A_BJ_35_2	A_BJ_35_2_params.txt	19
+Distribution Networks: 3
 A_KPC_35_1	A_KPC_35_1_params.txt	55
 A_KPC_35_2	A_KPC_35_2_params.txt	68
 A_KPC_35_3	A_KPC_35_3_params.txt	29
+A_BJ_35_1	A_BJ_35_1_params.txt	1
+A_BJ_35_2	A_BJ_35_2_params.txt	19
 
 Transmission Network
 Location1	Location1_params.txt
