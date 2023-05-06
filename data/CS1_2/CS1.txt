@@ -1,0 +1,28 @@
+Years: 1
+2020	10
+2030	10
+2040	10
+2050	10
+
+Days: 2
+Summer	365
+Winter	182
+
+NumInstants: 24
+
+Discount Factor: 0.03
+
+Market Data
+CS1_market_data
+
+Distribution Networks: 1
+case18_1	case18_1_params.txt	55
+
+Transmission Network
+case57	case57_params.txt
+
+Shared Energy Storage
+CS1_ESS_Params.txt	CS1_ESS.xlsx
+
+Planning Parameters
+CS1_params.txt
