@@ -798,31 +798,32 @@ def _build_model(network, params):
             model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[p] == expected_vmag_sqr)
 
     # - Expected Shared ESS Power (explicit definition)
-    model.expected_shared_ess_power = pe.ConstraintList()
-    if network.is_transmission:
-        for e in model.shared_energy_storages:
+    if len(network.shared_energy_storages) > 0:
+        model.expected_shared_ess_power = pe.ConstraintList()
+        if network.is_transmission:
+            for e in model.shared_energy_storages:
+                for p in model.periods:
+                    expected_sess_p = 0.0
+                    for s_m in model.scenarios_market:
+                        omega_m = network.prob_market_scenarios[s_m]
+                        for s_o in model.scenarios_operation:
+                            omega_o = network.prob_operation_scenarios[s_o]
+                            pch = model.shared_es_pch[e, s_m, s_o, p]
+                            pdch = model.shared_es_pdch[e, s_m, s_o, p]
+                            expected_sess_p += (pch - pdch) * omega_m * omega_o
+                    model.expected_shared_ess_power.add(model.expected_shared_ess_p[e, p] == expected_sess_p)
+        else:
+            shared_ess_idx = network.get_shared_energy_storage_idx(ref_node_id)
             for p in model.periods:
                 expected_sess_p = 0.0
                 for s_m in model.scenarios_market:
                     omega_m = network.prob_market_scenarios[s_m]
                     for s_o in model.scenarios_operation:
-                        omega_o = network.prob_operation_scenarios[s_o]
-                        pch = model.shared_es_pch[e, s_m, s_o, p]
-                        pdch = model.shared_es_pdch[e, s_m, s_o, p]
-                        expected_sess_p += (pch - pdch) * omega_m * omega_o
-                model.expected_shared_ess_power.add(model.expected_shared_ess_p[e, p] == expected_sess_p)
-    else:
-        shared_ess_idx = network.get_shared_energy_storage_idx(ref_node_id)
-        for p in model.periods:
-            expected_sess_p = 0.0
-            for s_m in model.scenarios_market:
-                omega_m = network.prob_market_scenarios[s_m]
-                for s_o in model.scenarios_operation:
-                    omega_s = network.prob_operation_scenarios[s_o]
-                    pch = model.shared_es_pch[shared_ess_idx, s_m, s_o, p]
-                    pdch = model.shared_es_pdch[shared_ess_idx, s_m, s_o, p]
-                    expected_sess_p += (pch - pdch) * omega_m * omega_s
-            model.expected_shared_ess_power.add(model.expected_shared_ess_p[p] == expected_sess_p)
+                        omega_s = network.prob_operation_scenarios[s_o]
+                        pch = model.shared_es_pch[shared_ess_idx, s_m, s_o, p]
+                        pdch = model.shared_es_pdch[shared_ess_idx, s_m, s_o, p]
+                        expected_sess_p += (pch - pdch) * omega_m * omega_s
+                model.expected_shared_ess_power.add(model.expected_shared_ess_p[p] == expected_sess_p)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Objective Function

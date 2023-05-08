@@ -46,6 +46,10 @@ class SharedResourcesPlanning:
         print('[INFO] Running PLANNING PROBLEM...')
         _run_planning_problem(self)
 
+    def run_without_coordination(self):
+        print('[INFO] Running PLANNING PROBLEM WITHOUT COORDINATION...')
+        _run_operational_planning_without_coordination(self)
+
     def run_operational_planning(self, candidate_solution):
         print('[INFO] Running OPERATIONAL PLANNING...')
         return _run_operational_planning(self, candidate_solution)
@@ -77,6 +81,11 @@ class SharedResourcesPlanning:
         filename = self.filename.replace('.txt', '') + '_operational_planning_results'
         processed_results = _process_operational_planning_results(self, tso_model, dso_models, esso_model, results)
         _write_operational_planning_results_to_excel(self, processed_results, primal_evolution=primal_evolution, filename=filename)
+
+    def write_operational_planning_results_without_coordination_to_excel(self, tso_model, dso_models, results):
+        filename = self.filename.replace('.txt', '') + '_operational_planning_results_no_coordination'
+        processed_results = _process_operational_planning_results_no_coordination(self, tso_model, dso_models, results)
+        _write_operational_planning_results_no_coordination_to_excel(self, processed_results, filename)
 
     def write_planning_results_to_excel(self, operational_planning_models, operational_results=dict(), bound_evolution=dict(), execution_time='N/A'):
         tso_model = operational_planning_models['tso']
@@ -978,6 +987,106 @@ def dual_convergence(planning_problem, consensus_vars, params):
 
 
 # ======================================================================================================================
+#  OPERATIONAL PLANNING WITHOUT COORDINATION functions
+# ======================================================================================================================
+def _run_operational_planning_without_coordination(planning_problem):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+    results = {'tso': dict(), 'dso': dict(), 'esso': dict()}
+
+    # Do not consider flexible resources
+    transmission_network.params.fl_reg = False
+    transmission_network.params.es_reg = False
+    transmission_network.params.rg_curt = False
+    transmission_network.params.l_curt = False
+    transmission_network.params.transf_reg = False
+    for node_id in distribution_networks:
+        distribution_network = distribution_networks[node_id]
+        distribution_network.params.fl_reg = False
+        distribution_network.params.es_reg = False
+        distribution_network.params.rg_curt = False
+        distribution_network.params.l_curt = False
+        distribution_network.params.transf_reg = False
+
+    # Shared ESS candidate solution (no hared ESS)
+    candidate_solution = dict()
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution[node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution[node_id][year] = dict()
+            candidate_solution[node_id][year]['s'] = 0.00
+            candidate_solution[node_id][year]['e'] = 0.00
+
+    # Create interface PF variables
+    interface_pf = create_interface_power_flow_variables(planning_problem)
+
+    # Create DSOs' Operational Planning models
+    dso_models = dict()
+    for node_id in distribution_networks:
+
+        distribution_network = distribution_networks[node_id]
+        results['dso'][node_id] = dict()
+
+        # Build model, fix candidate solution, and Run S-MPOPF model
+        dso_model = distribution_network.build_model()
+        distribution_network.update_model_with_candidate_solution(dso_model, candidate_solution)
+        results['dso'][node_id] = distribution_network.optimize(dso_model)
+
+        # Get initial interface PF values
+        for year in distribution_network.years:
+            for day in distribution_network.days:
+                s_base = distribution_network.network[year][day].baseMVA
+                for p in dso_model[year][day].periods:
+                    interface_pf[node_id][year][day]['p'][p] = pe.value(dso_model[year][day].expected_interface_pf_p[p]) * s_base
+                    interface_pf[node_id][year][day]['q'][p] = pe.value(dso_model[year][day].expected_interface_pf_q[p]) * s_base
+
+        dso_models[node_id] = dso_model
+
+    # Create TSO Operational Planning model
+    tso_model = transmission_network.build_model()
+    transmission_network.update_model_with_candidate_solution(tso_model, candidate_solution)
+    for node_id in transmission_network.active_distribution_network_nodes:
+        for year in transmission_network.years:
+            for day in transmission_network.days:
+                node_idx = transmission_network.network[year][day].get_node_idx(node_id)
+                s_base = transmission_network.network[year][day].baseMVA
+
+                # - Free Pc and Qc at the interface nodes
+                for s_m in tso_model[year][day].scenarios_market:
+                    for s_o in tso_model[year][day].scenarios_operation:
+                        for p in tso_model[year][day].periods:
+                            tso_model[year][day].pc[node_idx, s_m, s_o, p].fixed = False
+                            tso_model[year][day].pc[node_idx, s_m, s_o, p].setub(None)
+                            tso_model[year][day].pc[node_idx, s_m, s_o, p].setlb(None)
+                            tso_model[year][day].qc[node_idx, s_m, s_o, p].fixed = False
+                            tso_model[year][day].qc[node_idx, s_m, s_o, p].setub(None)
+                            tso_model[year][day].qc[node_idx, s_m, s_o, p].setlb(None)
+                            if transmission_network.params.fl_reg:
+                                tso_model[year][day].flex_p_up[node_idx, s_m, s_o, p].fix(0.0)
+                                tso_model[year][day].flex_p_down[node_idx, s_m, s_o, p].fix(0.0)
+
+                # - Fix expected interface PF
+                pc = interface_pf[node_id][year][day]['p'][p] / s_base
+                qc = interface_pf[node_id][year][day]['q'][p] / s_base
+                tso_model[year][day].pc[node_idx, s_m, s_o, p].fix(pc)
+                tso_model[year][day].qc[node_idx, s_m, s_o, p].fix(qc)
+
+    results['tso'] = transmission_network.optimize(tso_model)
+
+    # Write results to xlsx file
+    planning_problem.write_operational_planning_results_without_coordination_to_excel(tso_model, dso_models, results)
+
+    return
+
+
+def create_interface_power_flow_variables(planning_problem):
+    consensus_vars, dual_vars = create_admm_variables(planning_problem)
+    return consensus_vars['interface']['pf']['dso']
+
+
+# ======================================================================================================================
 #  PLANNING PROBLEM read functions
 # ======================================================================================================================
 def _read_planning_problem(planning_problem):
@@ -1262,6 +1371,24 @@ def _process_results_interface_power_flow(planning_problem, tso_model, dso_model
         dso_model = dso_models[node_id]
         distribution_network = distribution_networks[node_id]
         processed_results['dso'][node_id] = distribution_network.process_results_interface_power_flow(dso_model)
+
+    return processed_results
+
+
+def _process_operational_planning_results_no_coordination(planning_problem, tso_model, dso_models, optimization_results):
+
+    transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
+
+    processed_results = dict()
+    processed_results['tso'] = dict()
+    processed_results['dso'] = dict()
+
+    processed_results['tso'] = transmission_network.process_results(tso_model, optimization_results['tso'])
+    for node_id in distribution_networks:
+        dso_model = dso_models[node_id]
+        distribution_network = distribution_networks[node_id]
+        processed_results['dso'][node_id] = distribution_network.process_results(dso_model, optimization_results['dso'][node_id])
 
     return processed_results
 
@@ -1608,6 +1735,33 @@ def _write_operational_planning_results_to_excel(planning_problem, results, prim
         wb.save(backup_filename)
 
 
+def _write_operational_planning_results_no_coordination_to_excel(planning_problem, results, filename='operation_planning_results_no_coordination'):
+
+    wb = Workbook()
+
+    _write_objective_function_values(wb, results)
+
+    #  TSO and DSOs' results
+    _write_network_voltage_results_to_excel(planning_problem, wb, results)
+    _write_network_consumption_results_to_excel(planning_problem, wb, results)
+    _write_network_generation_results_to_excel(planning_problem, wb, results)
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'losses')
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'ratio')
+    _write_network_branch_results_to_excel(planning_problem, wb, results, 'current_perc')
+
+    # Save results
+    results_filename = os.path.join(planning_problem.results_dir, filename + '.xlsx')
+    try:
+        wb.save(results_filename)
+    except:
+        from datetime import datetime
+        now = datetime.now()
+        current_time = now.strftime("%Y-%m-%d_%H-%M-%S")
+        backup_filename = os.path.join(planning_problem.results_dir, f'{filename}_{current_time}.xlsx')
+        print(f"[WARNING] Couldn't write to file {results_filename}. Results saved to file {backup_filename}.xlsx")
+        wb.save(backup_filename)
+
+
 def _write_objective_function_values(workbook, results):
 
     sheet = workbook.worksheets[0]
@@ -1626,17 +1780,18 @@ def _write_objective_function_values(workbook, results):
             col_idx += 1
     sheet.cell(row=row_idx, column=col_idx).value = 'Total, [NPV Mm.u.]'
 
-    row_idx = row_idx + 1
-    col_idx = 1
-    sheet.cell(row=row_idx, column=col_idx).value = 'ESSO'
-    col_idx += 1
-    for year in results['esso']['results']:
-        for day in results['esso']['results'][year]:
-            sheet.cell(row=row_idx, column=col_idx).value = results['esso']['results'][year][day]['obj']
-            sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
-            col_idx += 1
-    sheet.cell(row=row_idx, column=col_idx).value = results['esso']['of_value'] / 1e6
-    sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+    if 'esso' in results:
+        row_idx = row_idx + 1
+        col_idx = 1
+        sheet.cell(row=row_idx, column=col_idx).value = 'ESSO'
+        col_idx += 1
+        for year in results['esso']['results']:
+            for day in results['esso']['results'][year]:
+                sheet.cell(row=row_idx, column=col_idx).value = results['esso']['results'][year][day]['obj']
+                sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
+        sheet.cell(row=row_idx, column=col_idx).value = results['esso']['of_value'] / 1e6
+        sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
 
     row_idx = row_idx + 1
     col_idx = 1
