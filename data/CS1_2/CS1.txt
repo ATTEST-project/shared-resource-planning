@@ -5,7 +5,7 @@ Years: 1
 2050	10
 
 Days: 2
-Summer	365
+Summer	183
 Winter	182
 
 NumInstants: 24
