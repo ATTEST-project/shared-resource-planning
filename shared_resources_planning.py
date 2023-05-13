@@ -1768,6 +1768,8 @@ def _write_objective_function_values(workbook, results):
     col_idx = 1
     sheet.cell(row=row_idx, column=col_idx).value = 'Agent'
     col_idx += 1
+    sheet.cell(row=row_idx, column=col_idx).value = 'Node ID'
+    col_idx += 1
     for year in results['tso']['results']:
         for day in results['tso']['results'][year]:
             sheet.cell(row=row_idx, column=col_idx).value = f'{year}, {day}, [m.u.]'
@@ -1778,6 +1780,8 @@ def _write_objective_function_values(workbook, results):
         row_idx = row_idx + 1
         col_idx = 1
         sheet.cell(row=row_idx, column=col_idx).value = 'ESSO'
+        col_idx += 1
+        sheet.cell(row=row_idx, column=col_idx).value = '-'
         col_idx += 1
         for year in results['esso']['results']:
             for day in results['esso']['results'][year]:
@@ -1791,6 +1795,8 @@ def _write_objective_function_values(workbook, results):
     col_idx = 1
     sheet.cell(row=row_idx, column=col_idx).value = 'TSO'
     col_idx += 1
+    sheet.cell(row=row_idx, column=col_idx).value = '-'
+    col_idx += 1
     for year in results['tso']['results']:
         for day in results['tso']['results'][year]:
             sheet.cell(row=row_idx, column=col_idx).value = results['tso']['results'][year][day]['obj']
@@ -1798,6 +1804,21 @@ def _write_objective_function_values(workbook, results):
             col_idx += 1
     sheet.cell(row=row_idx, column=col_idx).value = results['tso']['of_value'] / 1e6
     sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+
+    row_idx = row_idx + 1
+    for node_id in results['dso']:
+        col_idx = 1
+        sheet.cell(row=row_idx, column=col_idx).value = 'DSO'
+        col_idx += 1
+        sheet.cell(row=row_idx, column=col_idx).value = node_id
+        col_idx += 1
+        for day in results['dso'][node_id]['results'][year]:
+            sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['results'][year][day]['obj']
+            sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+        sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['of_value'] / 1e6
+        sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+        row_idx += 1
 
 
 def _write_shared_ess_specifications(workbook, shared_ess_info):

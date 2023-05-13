@@ -4,14 +4,35 @@ benders_tol_rel = 1e-2
 benders_num_max_iters = 1000
 
 ADMM
-admm_tol = 5e-2
+admm_tol = 1e-2
 admm_num_max_iters = 100
 
 rho
-Location1 = 0.10
-A_BJ_35_1 = 0.10
-A_BJ_35_2 = 0.10
-A_KPC_35_1 = 0.10
-A_KPC_35_2 = 0.10
-A_KPC_35_3 = 0.10
+case57 = 0.10
+case18_1 = 0.10
+case18_2 = 0.10
+case18_3 = 0.10
+case18_4 = 0.10
+case18_5 = 0.10
+case18_6 = 0.10
+case18_7 = 0.10
+case18_8 = 0.10
+case18_9 = 0.10
+case18_10 = 0.10
+case18_11 = 0.10
+case18_12 = 0.10
+case18_13 = 0.10
+case18_14 = 0.10
+case18_15 = 0.10
+case18_16 = 0.10
+case18_17 = 0.10
+case18_18 = 0.10
+case18_19 = 0.10
+case18_20 = 0.10
+case18_21 = 0.10
+case18_22 = 0.10
+case18_23 = 0.10
+case18_24 = 0.10
+case18_25 = 0.10
+case18_26 = 0.10
 ESSO = 0.10
