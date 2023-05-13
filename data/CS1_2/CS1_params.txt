@@ -4,7 +4,7 @@ benders_tol_rel = 1e-2
 benders_num_max_iters = 1000
 
 ADMM
-admm_tol = 1e-2
+admm_tol = 5e-2
 admm_num_max_iters = 100
 
 rho
