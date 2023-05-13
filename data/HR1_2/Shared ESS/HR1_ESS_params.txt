@@ -1,4 +1,4 @@
-budget = 1e6
+budget = 10e6
 max_capacity = 2.50
 min_rating = 0.25
 min_pe_factor = 0.10

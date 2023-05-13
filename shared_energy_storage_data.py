@@ -261,8 +261,8 @@ def _build_subproblem_model(shared_ess_data):
     model.es_e_invesment = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                       # Invesment in energy capacity in year y (complicating variable)
     model.es_s_invesment_fixed = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                 # Benders' -- used to get the dual variables (sensitivities)
     model.es_e_invesment_fixed = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                 # (...)
-    model.slack_up = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                             # Benders' -- ensures feasibility of the subproblem (numerical issues)
-    model.slack_down = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                           # (...)
+    model.slack_up = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)             # Benders' -- ensures feasibility of the subproblem (numerical issues)
+    model.slack_down = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)           # (...)
     for e in model.energy_storages:
         for y in model.years:
             model.es_e_capacity_degradation[e, y].setub(1.00)
