@@ -1,5 +1,6 @@
 import os
 from openpyxl import Workbook
+from openpyxl.styles import PatternFill
 from definitions import *
 from network import Network
 from network_parameters import NetworkParameters
@@ -293,6 +294,7 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
     row_idx = 1
     decimal_style = '0.00'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # Write Header
     sheet.cell(row=row_idx, column=1).value = 'Node ID'
@@ -324,6 +326,8 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                         omega_s = network.prob_operation_scenarios[s_o]
                         for node_id in results[year][day][s_m][s_o]['voltage']['vmag']:
 
+                            v_min, v_max = network.get_node_voltage_limits(node_id)
+
                             # Voltage magnitude
                             sheet.cell(row=row_idx, column=1).value = node_id
                             sheet.cell(row=row_idx, column=2).value = int(year)
@@ -335,6 +339,8 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                                 v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id][p]
                                 sheet.cell(row=row_idx, column=p + 7).value = v_mag
                                 sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                                if v_mag > v_max or v_mag < v_min:
+                                    sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                                 expected_vmag[node_id][p] += v_mag * omega_m * omega_s
                             row_idx = row_idx + 1
 
@@ -355,6 +361,7 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
             for node in network.nodes:
 
                 node_id = node.bus_i
+                v_min, v_max = network.get_node_voltage_limits(node_id)
 
                 # Expected voltage magnitude
                 sheet.cell(row=row_idx, column=1).value = node_id
@@ -366,6 +373,8 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                 for p in range(network.num_instants):
                     sheet.cell(row=row_idx, column=p + 7).value = expected_vmag[node_id][p]
                     sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                    if expected_vmag[node_id][p] > v_max or expected_vmag[node_id][p] < v_min:
+                        sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                 row_idx = row_idx + 1
 
                 # Expected voltage angle
@@ -666,6 +675,7 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
     row_idx = 1
     decimal_style = '0.00'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # Write Header
     sheet.cell(row=row_idx, column=1).value = 'Node ID'
@@ -738,6 +748,8 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                                     pg_curt = results[year][day][s_m][s_o]['generation']['pg_curt'][g][p]
                                     sheet.cell(row=row_idx, column=p + 9).value = pg_curt
                                     sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
+                                    if pg_curt > 0.0:
+                                        sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                                     expected_pg_curt[gen_id][p] += pg_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
@@ -807,6 +819,8 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                     for p in range(network.num_instants):
                         sheet.cell(row=row_idx, column=p + 9).value = expected_pg_curt[gen_id][p]
                         sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
+                        if expected_pg_curt[gen_id][p] > 0.0:
+                            sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                     row_idx = row_idx + 1
 
                     # Active Power net
@@ -856,6 +870,7 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
     decimal_style = '0.00'
     perc_style = '0.00%'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     sheet = workbook.create_sheet(sheet_name)
 
@@ -901,6 +916,8 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
                                     if result_type == 'current_perc':
                                         sheet.cell(row=row_idx, column=p + 8).value = value
                                         sheet.cell(row=row_idx, column=p + 8).number_format = perc_style
+                                        if value > 1.0:
+                                            sheet.cell(row=row_idx, column=p + 8).fill = violation_fill
                                     else:
                                         sheet.cell(row=row_idx, column=p + 8).value = value
                                         sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
@@ -922,6 +939,8 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
                         if result_type == 'current_perc':
                             sheet.cell(row=row_idx, column=p + 8).value = expected_values[k][p]
                             sheet.cell(row=row_idx, column=p + 8).number_format = perc_style
+                            if expected_values[k][p] > 1.0:
+                                sheet.cell(row=row_idx, column=p + 8).fill = violation_fill
                         else:
                             sheet.cell(row=row_idx, column=p + 8).value = expected_values[k][p]
                             sheet.cell(row=row_idx, column=p + 8).number_format = decimal_style
