@@ -171,12 +171,6 @@ def _build_master_problem(shared_ess_data):
         for y in model.years:
             model.energy_storage_maximum_capacity.add(model.es_e_rated[e, y] <= params.max_capacity)
 
-    # - Minimum Power Rating
-    model.energy_storage_minimum_rating = pe.ConstraintList()
-    for e in model.energy_storages:
-        for y in model.years:
-            model.energy_storage_minimum_rating.add(model.es_s_rated[e, y] >= params.min_rating)
-
     # - P/E factor
     model.energy_storage_power_to_energy_factor = pe.ConstraintList()
     for e in model.energy_storages:

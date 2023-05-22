@@ -10,7 +10,6 @@ class SharedEnergyStorageParameters:
     def __init__(self):
         self.budget = 1e6                           # 1 M m.u.
         self.max_capacity = 2.50                    # Max energy capacity (related to space constraints)
-        self.min_rating = 0.25                      # Minimum power rating
         self.min_pe_factor = 0.10                   # Minimum S/E factor (related to the ESS technology)
         self.max_pe_factor = 4.00                   # Maximum S/E factor (related to the ESS technology)
         self.ess_relax = True                       # Charging/Discharging modeling method (True: McCormick envelopes, False: NLP model)
@@ -41,9 +40,6 @@ def _read_parameters_from_file(planning_parameters, filename):
                 elif param_type == 'max_capacity':
                     if is_number(tokens[1].strip()):
                         planning_parameters.max_capacity = float(tokens[1].strip())
-                elif param_type == 'min_rating':
-                    if is_number(tokens[1].strip()):
-                        planning_parameters.min_rating = float(tokens[1].strip())
                 elif param_type == 'min_pe_factor':
                     if is_number(tokens[1].strip()):
                         planning_parameters.min_pe_factor = float(tokens[1].strip())

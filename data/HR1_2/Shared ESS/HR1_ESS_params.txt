@@ -1,6 +1,5 @@
-budget = 10e6
+budget = 1e6
 max_capacity = 2.50
-min_rating = 0.25
 min_pe_factor = 0.10
 max_pe_factor = 4.00
 ess_relax = True
