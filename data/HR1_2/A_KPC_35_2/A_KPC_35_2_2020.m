@@ -79,7 +79,7 @@ mpc.branch = [
 %% generator data
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	
 mpc.gen = [																						
-	9	0	0	80	-80     1.05	100	1	80	-80	0	0	0	0	0	0	0	0	0	0	0;
+9	0	0	80	-80     1.05	100	1	80	-80	0	0	0	0	0	0	0	0	0	0	0;
 ];																						
 
 % Generation Technology Type:
@@ -100,4 +100,4 @@ mpc.gen = [
 %	genType
 mpc.gen_tags = {
 	'REF';
-};
+};							 

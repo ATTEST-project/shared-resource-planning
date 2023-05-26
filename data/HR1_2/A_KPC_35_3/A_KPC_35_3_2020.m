@@ -46,9 +46,9 @@ mpc.branch = [
 %% generator data
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	
 mpc.gen = [																						
-	31	0	0	40	-40     1.05	100	1	40	-40	0	0	0	0	0	0	0	0	0	0	0;
-	36	1	0	0.7	-0.7	1       100	1	1.6	0	0	0	0	0	0	0	0	0	0	0	0;
-];
+31	0	0	40	-40     1.05	100	1	40	-40	0	0	0	0	0	0	0	0	0	0	0;
+36	1	0	0.7	-0.7	1       100	1	1.6	0	0	0	0	0	0	0	0	0	0	0	0;
+];																						
 
 % Generation Technology Type:
 %  CWS (Connection with Spain),
@@ -67,5 +67,5 @@ mpc.gen = [
 %  REF (Reference node)
 %	genType
 mpc.gen_tags = {
-	'REF';	'FOG';
-};
+	'REF';	'REF';
+};							 

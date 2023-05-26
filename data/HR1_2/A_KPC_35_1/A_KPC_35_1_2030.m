@@ -39,6 +39,8 @@ mpc.branch = [
 %	bus	Pg	Qg	Qmax	Qmin	Vg	mBase	status	Pmax	Pmin	Pc1	Pc2	Qc1min	Qc1max	Qc2min	Qc2max	ramp_agc	ramp_10	ramp_30	ramp_q	apf	
 mpc.gen = [																						
 1	0	0	40	-40     1.05	100	1	40	-40	0	0	0	0	0	0	0	0	0	0	0;
+3	0.00	0.00	0.00	0.00	1.00	100	1	5.09	0.00	0	0	0	0	0	0	0	0	0	0	0;
+6	0.00	0.00	0.00	0.00	1.00	100	1	1.70	0.00	0	0	0	0	0	0	0	0	0	0	0;
 ];																						
 
 % Generation Technology Type:
@@ -58,5 +60,13 @@ mpc.gen = [
 %  REF (Reference node)
 %	genType
 mpc.gen_tags = {
-	'REF';
+	'REF';	'PVP';	'PVP';
 };
+
+%% energy storage
+%	Bus	S, [MW]	E, [MWh]	Einit, [MWh]	EffCh	EffDch	MaxPF	MinPF
+mpc.energy_storage = [
+3	0.48	0.48	0.24	0.90	0.90	0.80	-0.80;
+6	0.16	0.16	0.08	0.90	0.90	0.80	-0.80;
+];
+
