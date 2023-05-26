@@ -891,7 +891,7 @@ def _build_model(network, params):
                             obj_scenario += COST_SLACK_BRANCH_FLOW * network.baseMVA * slack_iij_sqr
 
                 # Energy storage charging/discharging exclusion
-                if params.ess_relax:
+                if params.es_reg and params.ess_relax:
 
                     for e in model.energy_storages:
                         for p in model.periods:
@@ -1015,10 +1015,12 @@ def _run_smopf(network, model, params, from_warm_start=False):
         solver.options['warm_start_bound_push'] = 1e-9
         solver.options['warm_start_mult_bound_push'] = 1e-9
         solver.options['mu_init'] = 1e-9
+    '''
     else:
         if network.is_transmission:
             solver.options['least_square_init_primal'] = 'no'
             solver.options['least_square_init_duals'] = 'no'
+    '''
 
     if params.solver_params.verbose:
         solver.options['print_level'] = 6
@@ -1027,20 +1029,9 @@ def _run_smopf(network, model, params, from_warm_start=False):
     if params.solver_params.solver == 'ipopt':
 
         solver.options['tol'] = params.solver_params.solver_tol
-        solver.options['dual_inf_tol'] = 1 / params.solver_params.solver_tol * 1e1
-        solver.options['constr_viol_tol'] = params.solver_params.solver_tol * 1e1
-        solver.options['compl_inf_tol'] = params.solver_params.solver_tol * 1e1
-
-        solver.options['acceptable_tol'] = params.solver_params.solver_tol * 1e1
+        solver.options['acceptable_tol'] = params.solver_params.solver_tol * 1e3
         solver.options['acceptable_iter'] = 5
-        solver.options['acceptable_dual_inf_tol'] = 1 / (params.solver_params.solver_tol * 1e2)
-        solver.options['acceptable_constr_viol_tol'] = params.solver_params.solver_tol * 1e2
-        solver.options['acceptable_compl_inf_tol'] = params.solver_params.solver_tol * 1e2
-
-        solver.options['s_max'] = 0.10
-        solver.options['max_iter'] = 10000
         solver.options['nlp_scaling_method'] = 'none'
-        solver.options['fixed_variable_treatment'] = 'relax_bounds'
 
         solver.options['linear_solver'] = params.solver_params.linear_solver
         if params.solver_params.linear_solver == 'pardiso':

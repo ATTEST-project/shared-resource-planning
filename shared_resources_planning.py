@@ -1,6 +1,7 @@
 import os
 import time
 from openpyxl import Workbook
+from openpyxl.styles import PatternFill
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -1812,10 +1813,11 @@ def _write_objective_function_values(workbook, results):
         col_idx += 1
         sheet.cell(row=row_idx, column=col_idx).value = node_id
         col_idx += 1
-        for day in results['dso'][node_id]['results'][year]:
-            sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['results'][year][day]['obj']
-            sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
-            col_idx += 1
+        for year in results['tso']['results']:
+            for day in results['dso'][node_id]['results'][year]:
+                sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['results'][year][day]['obj']
+                sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
         sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['of_value'] / 1e6
         sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
         row_idx += 1
@@ -2490,6 +2492,7 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
     decimal_style = '0.00'
 
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     for year in results:
         for day in results[year]:
@@ -2507,6 +2510,8 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
                         omega_s = network[year][day].prob_operation_scenarios[s_o]
                         for node_id in results[year][day][s_m][s_o]['voltage']['vmag']:
 
+                            v_min, v_max = network[year][day].get_node_voltage_limits(node_id)
+
                             # Voltage magnitude
                             sheet.cell(row=row_idx, column=1).value = operator_type
                             sheet.cell(row=row_idx, column=2).value = tn_node_id
@@ -2520,6 +2525,8 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
                                 v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id][p]
                                 sheet.cell(row=row_idx, column=p + 9).value = v_mag
                                 sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
+                                if v_mag > v_max or v_mag < v_min:
+                                    sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                                 expected_vmag[node_id][p] += v_mag * omega_m * omega_s
                             row_idx = row_idx + 1
 
@@ -2555,6 +2562,8 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
                 for p in range(network[year][day].num_instants):
                     sheet.cell(row=row_idx, column=p + 9).value = expected_vmag[node_id][p]
                     sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
+                    if expected_vmag[node_id][p] > v_max or expected_vmag[node_id][p] < v_min:
+                        sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                 row_idx = row_idx + 1
 
                 # Expected voltage angle
@@ -2873,6 +2882,7 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
 
     decimal_style = '0.00'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     for year in results:
         for day in results[year]:
@@ -2933,6 +2943,8 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
                                     pg_curt = results[year][day][s_m][s_o]['generation']['pg_curt'][g][p]
                                     sheet.cell(row=row_idx, column=p + 11).value = pg_curt
                                     sheet.cell(row=row_idx, column=p + 11).number_format = decimal_style
+                                    if pg_curt > 0.0:
+                                        sheet.cell(row=row_idx, column=p + 11).fill = violation_fill
                                     expected_pg_curt[gen_id][p] += pg_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
@@ -3010,6 +3022,8 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
                     for p in range(network[year][day].num_instants):
                         sheet.cell(row=row_idx, column=p + 11).value = expected_pg_curt[gen_id][p]
                         sheet.cell(row=row_idx, column=p + 11).number_format = decimal_style
+                        if expected_pg_curt[gen_id][p] > 0.0:
+                            sheet.cell(row=row_idx, column=p + 11).fill = violation_fill
                     row_idx = row_idx + 1
 
                     # Active Power net
@@ -3090,6 +3104,7 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
     decimal_style = '0.00'
     perc_style = '0.00%'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     aux_string = str()
     if result_type == 'losses':
@@ -3129,6 +3144,8 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
                                     if result_type == 'current_perc':
                                         sheet.cell(row=row_idx, column=p + 10).value = value
                                         sheet.cell(row=row_idx, column=p + 10).number_format = perc_style
+                                        if value > 1.0:
+                                            sheet.cell(row=row_idx, column=p + 10).fill = violation_fill
                                     else:
                                         sheet.cell(row=row_idx, column=p + 10).value = value
                                         sheet.cell(row=row_idx, column=p + 10).number_format = decimal_style
@@ -3152,6 +3169,8 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
                         if result_type == 'current_perc':
                             sheet.cell(row=row_idx, column=p + 10).value = expected_values[k][p]
                             sheet.cell(row=row_idx, column=p + 10).number_format = perc_style
+                            if expected_values[k][p] > 1.0:
+                                sheet.cell(row=row_idx, column=p + 10).fill = violation_fill
                         else:
                             sheet.cell(row=row_idx, column=p + 10).value = expected_values[k][p]
                             sheet.cell(row=row_idx, column=p + 10).number_format = decimal_style
