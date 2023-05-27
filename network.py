@@ -890,21 +890,6 @@ def _build_model(network, params):
                             slack_iij_sqr = model.slack_iij_sqr[b, s_m, s_o, p]
                             obj_scenario += COST_SLACK_BRANCH_FLOW * network.baseMVA * slack_iij_sqr
 
-                # Energy storage charging/discharging exclusion
-                if params.es_reg and params.ess_relax:
-
-                    for e in model.energy_storages:
-                        for p in model.periods:
-                            pch = model.es_pch[e, s_m, s_o, p]
-                            pdch = model.es_pdch[e, s_m, s_o, p]
-                            obj_scenario += COST_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
-
-                    for e in model.shared_energy_storages:
-                        for p in model.periods:
-                            pch = model.shared_es_pch[e, s_m, s_o, p]
-                            pdch = model.shared_es_pdch[e, s_m, s_o, p]
-                            obj_scenario += COST_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
-
                 # Flexible loads energy balance constraint
                 if params.fl_reg:
                     if params.fl_relax:
@@ -962,21 +947,6 @@ def _build_model(network, params):
                             obj_scenario += PENALTY_LOAD_CURTAILMENT * pc_curt
                             obj_scenario += PENALTY_LOAD_CURTAILMENT * qc_curt
 
-                # Energy storage charging/discharging exclusion
-                if params.es_reg and params.ess_relax:
-
-                    for e in model.energy_storages:
-                        for p in model.periods:
-                            pch = model.es_pch[e, s_m, s_o, p]
-                            pdch = model.es_pdch[e, s_m, s_o, p]
-                            obj_scenario += PENALTY_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
-
-                    for e in model.shared_energy_storages:
-                        for p in model.periods:
-                            pch = model.shared_es_pch[e, s_m, s_o, p]
-                            pdch = model.shared_es_pdch[e, s_m, s_o, p]
-                            obj_scenario += PENALTY_ENERGY_STORAGE_CONS * network.baseMVA * (pch * pdch)
-
                 # Flexible loads energy balance constraint
                 if params.fl_reg:
                     if params.fl_relax:
@@ -1015,12 +985,6 @@ def _run_smopf(network, model, params, from_warm_start=False):
         solver.options['warm_start_bound_push'] = 1e-9
         solver.options['warm_start_mult_bound_push'] = 1e-9
         solver.options['mu_init'] = 1e-9
-    '''
-    else:
-        if network.is_transmission:
-            solver.options['least_square_init_primal'] = 'no'
-            solver.options['least_square_init_duals'] = 'no'
-    '''
 
     if params.solver_params.verbose:
         solver.options['print_level'] = 6
@@ -1032,6 +996,7 @@ def _run_smopf(network, model, params, from_warm_start=False):
         solver.options['acceptable_tol'] = params.solver_params.solver_tol * 1e3
         solver.options['acceptable_iter'] = 5
         solver.options['nlp_scaling_method'] = 'none'
+        solver.options['max_iter'] = 1000
 
         solver.options['linear_solver'] = params.solver_params.linear_solver
         if params.solver_params.linear_solver == 'pardiso':

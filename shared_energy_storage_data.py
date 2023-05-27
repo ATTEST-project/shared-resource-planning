@@ -508,8 +508,6 @@ def _build_subproblem_model(shared_ess_data):
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * c_r_sec[year][day][s_m][p] * (pup + pdown)                 # Revenue secondary reserve (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_up[year][day][s_m][p] * pup * r_up_activ)         # Revenue secondary reserve upward activation (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)   # Revenue secondary reserve downward activation (negative)
-                            if shared_ess_data.params.ess_relax:
-                                operational_cost += annualization * num_years * num_days * prob_market * prob_operation * COST_ENERGY_STORAGE_CONS * (pch * pdch)                # Energy storage charging/discharging exclusion
 
             # Slack Penalty
             slack_penalty += 1e7 * model.slack_up[e, y]
@@ -540,30 +538,20 @@ def _optimize(model, params, from_warm_start=False):
         solver.options['warm_start_mult_bound_push'] = 1e-9
         solver.options['mu_init'] = 1e-9
 
-    solver.options['tol'] = params.solver_tol
     if params.verbose:
         solver.options['print_level'] = 6
         solver.options['output_file'] = 'optim_log.txt'
 
     if params.solver == 'ipopt':
-
         solver.options['tol'] = params.solver_tol
-        solver.options['dual_inf_tol'] = 1 / params.solver_tol * 1e1
-        solver.options['constr_viol_tol'] = params.solver_tol * 1e1
-        solver.options['compl_inf_tol'] = params.solver_tol * 1e1
-
-        solver.options['acceptable_tol'] = params.solver_tol * 1e1
+        solver.options['acceptable_tol'] = params.solver_tol * 1e3
         solver.options['acceptable_iter'] = 5
-        solver.options['acceptable_dual_inf_tol'] = 1 / (params.solver_tol * 1e2)
-        solver.options['acceptable_constr_viol_tol'] = params.solver_tol * 1e2
-        solver.options['acceptable_compl_inf_tol'] = params.solver_tol * 1e2
-
-        solver.options['s_max'] = 0.10
-        solver.options['max_iter'] = 10000
         solver.options['nlp_scaling_method'] = 'none'
-        solver.options['fixed_variable_treatment'] = 'relax_bounds'
+        solver.options['max_iter'] = 1000
 
         solver.options['linear_solver'] = params.linear_solver
+        if params.linear_solver == 'pardiso':
+            solver.options['pardisolib'] = 'C:\\msys64\\mingw64\\bin\\libpardiso.dll'
 
     result = solver.solve(model, tee=params.verbose)
 
