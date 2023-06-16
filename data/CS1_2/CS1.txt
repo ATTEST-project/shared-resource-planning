@@ -1,4 +1,4 @@
-Years: 1
+Years: 2
 2020	10
 2030	10
 2040	10
@@ -15,33 +15,8 @@ Discount Factor: 0.03
 Market Data
 CS1_market_data
 
-Distribution Networks: 26
-case18_1	case18_params.txt	5
-case18_2	case18_params.txt	13
-case18_3	case18_params.txt	14
-case18_4	case18_params.txt	15
-case18_5	case18_params.txt	16
-case18_6	case18_params.txt	17
-case18_7	case18_params.txt	18
-case18_8	case18_params.txt	23
-case18_9	case18_params.txt	25
-case18_10	case18_params.txt	27
-case18_11	case18_params.txt	29
-case18_12	case18_params.txt	31
-case18_13	case18_params.txt	35
-case18_14	case18_params.txt	38
-case18_15	case18_params.txt	41
-case18_16	case18_params.txt	42
-case18_17	case18_params.txt	44
-case18_18	case18_params.txt	47
-case18_19	case18_params.txt	49
-case18_20	case18_params.txt	50
-case18_21	case18_params.txt	51
-case18_22	case18_params.txt	52
-case18_23	case18_params.txt	53
-case18_24	case18_params.txt	55
-case18_25	case18_params.txt	56
-case18_26	case18_params.txt	57
+Distribution Networks: 1
+case18	case18_params.txt	5
 
 Transmission Network
 case57	case57_params.txt
