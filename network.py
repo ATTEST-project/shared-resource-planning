@@ -488,7 +488,7 @@ def _build_model(network, params):
         model.expected_shared_ess_p = pe.Var(model.periods, domain=pe.Reals, initialize=0.0)
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Restrictions
+    # Constraints
     # - Voltage
     model.voltage_cons = pe.ConstraintList()
     for i in model.nodes:
@@ -503,8 +503,10 @@ def _build_model(network, params):
                         for p in model.periods:
                             e = model.e[i, s_m, s_o, p]
                             f = model.f[i, s_m, s_o, p]
-                            vmag_cons = e ** 2 + f ** 2 == vg[p] ** 2
-                            model.voltage_cons.add(vmag_cons)
+                            #vmag_cons = e ** 2 + f ** 2 == vg[p] ** 2
+                            #model.voltage_cons.add(vmag_cons)
+                            model.voltage_cons.add(e ** 2 + f ** 2 - vg[p] ** 2 >= -SMALL_TOLERANCE)
+                            model.voltage_cons.add(e ** 2 + f ** 2 - vg[p] ** 2 <= SMALL_TOLERANCE)
             else:
                 # - Voltage at the bus is not controlled
                 for s_m in model.scenarios_market:
@@ -546,7 +548,9 @@ def _build_model(network, params):
                         for p in model.periods:
                             p_up += model.flex_p_up[i, s_m, s_o, p]
                             p_down += model.flex_p_down[i, s_m, s_o, p]
-                        model.fl_p_balance.add(p_up == p_down)
+                        #model.fl_p_balance.add(p_up == p_down)
+                        model.fl_p_balance.add(p_up - p_down >= -SMALL_TOLERANCE)   # Note: helps with convergence (numerical issues)
+                        model.fl_p_balance.add(p_up - p_down <= SMALL_TOLERANCE)
 
     # - Energy Storage constraints
     if params.es_reg:
@@ -570,11 +574,15 @@ def _build_model(network, params):
 
                         # State-of-Charge
                         if p > 0:
-                            con_balance = model.es_soc[e, s_m, s_o, p] - model.es_soc[e, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
-                            model.energy_storage_balance.add(con_balance)
+                            #con_balance = model.es_soc[e, s_m, s_o, p] - model.es_soc[e, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
+                            #model.energy_storage_balance.add(con_balance)
+                            model.energy_storage_balance.add(model.es_soc[e, s_m, s_o, p] - model.es_soc[e, s_m, s_o, p - 1] - (pch * eff_charge - pdch / eff_discharge) >= -SMALL_TOLERANCE)
+                            model.energy_storage_balance.add(model.es_soc[e, s_m, s_o, p] - model.es_soc[e, s_m, s_o, p - 1] - (pch * eff_charge - pdch / eff_discharge) <= SMALL_TOLERANCE)
                         else:
-                            con_balance = model.es_soc[e, s_m, s_o, p] - soc_init == pch * eff_charge - pdch / eff_discharge
-                            model.energy_storage_balance.add(con_balance)
+                            #con_balance = model.es_soc[e, s_m, s_o, p] - soc_init == pch * eff_charge - pdch / eff_discharge
+                            #model.energy_storage_balance.add(con_balance)
+                            model.energy_storage_balance.add(model.es_soc[e, s_m, s_o, p] - soc_init - (pch * eff_charge - pdch / eff_discharge) >= -SMALL_TOLERANCE)
+                            model.energy_storage_balance.add(model.es_soc[e, s_m, s_o, p] - soc_init - (pch * eff_charge - pdch / eff_discharge) <= SMALL_TOLERANCE)
 
                         # Charging/discharging exclusivity constraint
                         if params.ess_relax:
@@ -584,10 +592,14 @@ def _build_model(network, params):
                             model.energy_storage_ch_dch_exclusion.add(model.es_w[e, s_m, s_o, p] >= energy_storage.s * pch + energy_storage.s * pdch - energy_storage.s**2)
                         else:
                             # NLP formulation
-                            model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
+                            #model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
+                            model.energy_storage_ch_dch_exclusion.add(pch * pdch >= -SMALL_TOLERANCE)   # Note: helps with convergence
+                            model.energy_storage_ch_dch_exclusion.add(pch * pdch <= SMALL_TOLERANCE)
 
-                    con_day_balance = model.es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
-                    model.energy_storage_day_balance.add(con_day_balance)
+                    #con_day_balance = model.es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
+                    #model.energy_storage_day_balance.add(con_day_balance)
+                    model.energy_storage_day_balance.add(model.es_soc[e, s_m, s_o, len(model.periods) - 1] - soc_final >= -SMALL_TOLERANCE)
+                    model.energy_storage_day_balance.add(model.es_soc[e, s_m, s_o, len(model.periods) - 1] - soc_final <= SMALL_TOLERANCE)
 
     # - Shared Energy Storage constraints
     model.shared_energy_storage_balance = pe.ConstraintList()
@@ -618,11 +630,14 @@ def _build_model(network, params):
 
                     # State-of-Charge
                     if p > 0:
-                        con_balance = model.shared_es_soc[e, s_m, s_o, p] - model.shared_es_soc[e, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
-                        model.shared_energy_storage_balance.add(con_balance)
+                        #con_balance = model.shared_es_soc[e, s_m, s_o, p] - model.shared_es_soc[e, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
+                        #model.shared_energy_storage_balance.add(con_balance)
+                        model.shared_energy_storage_balance.add(model.shared_es_soc[e, s_m, s_o, p] - model.shared_es_soc[e, s_m, s_o, p - 1] - (pch * eff_charge - pdch / eff_discharge) >= -SMALL_TOLERANCE)
+                        model.shared_energy_storage_balance.add(model.shared_es_soc[e, s_m, s_o, p] - model.shared_es_soc[e, s_m, s_o, p - 1] - (pch * eff_charge - pdch / eff_discharge) <= SMALL_TOLERANCE)
                     else:
-                        con_balance = model.shared_es_soc[e, s_m, s_o, p] - soc_init == pch * eff_charge - pdch / eff_discharge
-                        model.shared_energy_storage_balance.add(con_balance)
+                        #con_balance = model.shared_es_soc[e, s_m, s_o, p] - soc_init == pch * eff_charge - pdch / eff_discharge
+                        model.shared_energy_storage_balance.add(model.shared_es_soc[e, s_m, s_o, p] - soc_init - (pch * eff_charge - pdch / eff_discharge) >= -SMALL_TOLERANCE)
+                        model.shared_energy_storage_balance.add(model.shared_es_soc[e, s_m, s_o, p] - soc_init - (pch * eff_charge - pdch / eff_discharge) <= SMALL_TOLERANCE)
 
                     # Charging/discharging exclusivity constraint
                     model.shared_energy_storage_ch_dch_exclusion.add(pch <= pch_max)
@@ -634,10 +649,14 @@ def _build_model(network, params):
                         model.shared_energy_storage_ch_dch_exclusion.add(model.shared_es_w[e, s_m, s_o, p] >= pdch_max * pch + pch_max * pdch - pch_max * pdch_max)
                     else:
                         # NLP model
-                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch == 0.0)
+                        #model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch == 0.0)
+                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch >= -SMALL_TOLERANCE)
+                        model.shared_energy_storage_ch_dch_exclusion.add(pch * pdch <= SMALL_TOLERANCE)
 
-                con_day_balance = model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
-                model.shared_energy_storage_day_balance.add(con_day_balance)
+                #con_day_balance = model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
+                #model.shared_energy_storage_day_balance.add(con_day_balance)
+                model.shared_energy_storage_day_balance.add(model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] - soc_final >= -SMALL_TOLERANCE)
+                model.shared_energy_storage_day_balance.add(model.shared_es_soc[e, s_m, s_o, len(model.periods) - 1] - soc_final <= SMALL_TOLERANCE)
 
     '''
     # - Conventional Generators (power factor limits)
@@ -716,8 +735,12 @@ def _build_model(network, params):
                             Qi -= (branch.b + branch.b_sh * 0.5) * (ei ** 2 + fi ** 2)
                             Qi += rij * (branch.b * (ei * ej + fi * fj) - branch.g * (fi * ej - ei * fj))
 
-                    model.node_balance_cons_p.add(Pg - Pd == Pi)
-                    model.node_balance_cons_q.add(Qg - Qd == Qi)
+                    #model.node_balance_cons_p.add(Pg - Pd == Pi)
+                    #model.node_balance_cons_q.add(Qg - Qd == Qi)
+                    model.node_balance_cons_p.add(Pg - Pd - Pi >= -SMALL_TOLERANCE)
+                    model.node_balance_cons_p.add(Pg - Pd - Pi <= SMALL_TOLERANCE)
+                    model.node_balance_cons_q.add(Qg - Qd - Qi >= -SMALL_TOLERANCE)
+                    model.node_balance_cons_q.add(Qg - Qd - Qi <= SMALL_TOLERANCE)
 
     # - Branch Power Flow constraints (current)
     model.branch_power_flow_cons = pe.ConstraintList()
@@ -745,7 +768,9 @@ def _build_model(network, params):
                         fj += model.slack_f_up[tnode_idx, s_m, s_o, p] - model.slack_f_down[tnode_idx, s_m, s_o, p]
 
                     iij_sqr = (branch.g**2 + branch.b**2) * ((ei - ej)**2 + (fi - fj)**2)
-                    model.branch_power_flow_cons.add(model.iij_sqr[b, s_m, s_o, p] == iij_sqr)
+                    #model.branch_power_flow_cons.add(model.iij_sqr[b, s_m, s_o, p] == iij_sqr)
+                    model.branch_power_flow_cons.add(model.iij_sqr[b, s_m, s_o, p] - iij_sqr >= -SMALL_TOLERANCE)
+                    model.branch_power_flow_cons.add(model.iij_sqr[b, s_m, s_o, p] - iij_sqr <= SMALL_TOLERANCE)
 
                     if params.slack_line_limits:
                         model.branch_power_flow_lims.add(model.iij_sqr[b, s_m, s_o, p] <= rating**2 + model.slack_iij_sqr[b, s_m, s_o, p])
@@ -775,9 +800,15 @@ def _build_model(network, params):
                             ei += model.slack_e_up[node_idx, s_m, s_o, p] - model.slack_e_down[node_idx, s_m, s_o, p]
                             fi += model.slack_f_up[node_idx, s_m, s_o, p] - model.slack_f_down[node_idx, s_m, s_o, p]
                         expected_vmag_sqr += (ei ** 2 + fi ** 2) * omega_m * omega_o
-                model.expected_interface_pf.add(model.expected_interface_pf_p[dn, p] == expected_pf_p)
-                model.expected_interface_pf.add(model.expected_interface_pf_q[dn, p] == expected_pf_q)
-                model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[dn, p] == expected_vmag_sqr)
+                #model.expected_interface_pf.add(model.expected_interface_pf_p[dn, p] == expected_pf_p)
+                #model.expected_interface_pf.add(model.expected_interface_pf_q[dn, p] == expected_pf_q)
+                #model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[dn, p] == expected_vmag_sqr)
+                model.expected_interface_pf.add(model.expected_interface_pf_p[dn, p] - expected_pf_p >= -SMALL_TOLERANCE)       # Note: helps with convergence (numerical issues)
+                model.expected_interface_pf.add(model.expected_interface_pf_p[dn, p] - expected_pf_p <= SMALL_TOLERANCE)
+                model.expected_interface_pf.add(model.expected_interface_pf_q[dn, p] - expected_pf_q >= -SMALL_TOLERANCE)
+                model.expected_interface_pf.add(model.expected_interface_pf_q[dn, p] - expected_pf_q <= SMALL_TOLERANCE)
+                model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[dn, p] - expected_vmag_sqr >= -SMALL_TOLERANCE)
+                model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[dn, p] - expected_vmag_sqr <= SMALL_TOLERANCE)
     else:
         ref_node_idx = network.get_node_idx(ref_node_id)
         ref_gen_idx = network.get_reference_gen_idx()
@@ -793,9 +824,15 @@ def _build_model(network, params):
                     expected_pf_q += model.qg[ref_gen_idx, s_m, s_o, p] * omega_m * omega_s
                     expected_vmag_sqr += (model.e[ref_node_idx, s_m, s_o, p] ** 2) * omega_m * omega_s
 
-            model.expected_interface_pf.add(model.expected_interface_pf_p[p] == expected_pf_p)
-            model.expected_interface_pf.add(model.expected_interface_pf_q[p] == expected_pf_q)
-            model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[p] == expected_vmag_sqr)
+            #model.expected_interface_pf.add(model.expected_interface_pf_p[p] == expected_pf_p)
+            #model.expected_interface_pf.add(model.expected_interface_pf_q[p] == expected_pf_q)
+            #model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[p] == expected_vmag_sqr)
+            model.expected_interface_pf.add(model.expected_interface_pf_p[p] - expected_pf_p >= -SMALL_TOLERANCE)
+            model.expected_interface_pf.add(model.expected_interface_pf_p[p] - expected_pf_p <= SMALL_TOLERANCE)
+            model.expected_interface_pf.add(model.expected_interface_pf_q[p] - expected_pf_q >= -SMALL_TOLERANCE)
+            model.expected_interface_pf.add(model.expected_interface_pf_q[p] - expected_pf_q <= SMALL_TOLERANCE)
+            model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[p] - expected_vmag_sqr >= -SMALL_TOLERANCE)
+            model.expected_interface_voltage.add(model.expected_interface_vmag_sqr[p] - expected_vmag_sqr <= SMALL_TOLERANCE)
 
     # - Expected Shared ESS Power (explicit definition)
     if len(network.shared_energy_storages) > 0:
@@ -811,7 +848,9 @@ def _build_model(network, params):
                             pch = model.shared_es_pch[e, s_m, s_o, p]
                             pdch = model.shared_es_pdch[e, s_m, s_o, p]
                             expected_sess_p += (pch - pdch) * omega_m * omega_o
-                    model.expected_shared_ess_power.add(model.expected_shared_ess_p[e, p] == expected_sess_p)
+                    #model.expected_shared_ess_power.add(model.expected_shared_ess_p[e, p] == expected_sess_p)
+                    model.expected_shared_ess_power.add(model.expected_shared_ess_p[e, p] - expected_sess_p >= -SMALL_TOLERANCE)
+                    model.expected_shared_ess_power.add(model.expected_shared_ess_p[e, p] - expected_sess_p <= SMALL_TOLERANCE)
         else:
             shared_ess_idx = network.get_shared_energy_storage_idx(ref_node_id)
             for p in model.periods:
@@ -823,7 +862,9 @@ def _build_model(network, params):
                         pch = model.shared_es_pch[shared_ess_idx, s_m, s_o, p]
                         pdch = model.shared_es_pdch[shared_ess_idx, s_m, s_o, p]
                         expected_sess_p += (pch - pdch) * omega_m * omega_s
-                model.expected_shared_ess_power.add(model.expected_shared_ess_p[p] == expected_sess_p)
+                #model.expected_shared_ess_power.add(model.expected_shared_ess_p[p] == expected_sess_p)
+                model.expected_shared_ess_power.add(model.expected_shared_ess_p[p] - expected_sess_p >= -SMALL_TOLERANCE)
+                model.expected_shared_ess_power.add(model.expected_shared_ess_p[p] - expected_sess_p <= SMALL_TOLERANCE)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Objective Function
@@ -1761,19 +1802,19 @@ def _plot_networkx_diagram(network, data_dir='data'):
     pos = nx.spring_layout(graph)
     pos_above, pos_below = {}, {}
     for k, v in pos.items():
-        pos_above[k] = (v[0], v[1] + 0.025)
-        pos_below[k] = (v[0], v[1] - 0.025)
+        pos_above[k] = (v[0], v[1] + 0.050)
+        pos_below[k] = (v[0], v[1] - 0.050)
 
     # Plot
     fig, ax = plt.subplots(figsize=(12, 12))
-    nx.draw_networkx_nodes(graph, ax=ax, pos=pos, node_color=node_colors, node_size=50)
-    nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=3)
-    nx.draw_networkx_labels(graph, ax=ax, pos=pos_below, labels=node_voltage_labels, font_size=1)
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=0.5, edge_color='black')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=0.5, edge_color='blue')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=0.5, edge_color='red')
-    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=0.5, edge_color='red')
-    nx.draw_networkx_edge_labels(graph, ax=ax, pos=pos, edge_labels=edge_labels, font_size=1, rotate=False)
+    nx.draw_networkx_nodes(graph, ax=ax, pos=pos, node_color=node_colors, node_size=200)
+    nx.draw_networkx_labels(graph, ax=ax, pos=pos, labels=node_labels, font_size=10)
+    nx.draw_networkx_labels(graph, ax=ax, pos=pos_below, labels=node_voltage_labels, font_size=5)
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=line_list, width=1.00, edge_color='black')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=transf_list, width=1.50, edge_color='blue')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_line_list, style='dashed', width=1.00, edge_color='red')
+    nx.draw_networkx_edges(graph, ax=ax, pos=pos, edgelist=open_transf_list, style='dashed', width=1.50, edge_color='red')
+    nx.draw_networkx_edge_labels(graph, ax=ax, pos=pos, edge_labels=edge_labels, font_size=5, rotate=False)
     plt.axis('off')
 
     filename = os.path.join(network.diagrams_dir, f'{network.name}_{network.year}_{network.day}.pdf')

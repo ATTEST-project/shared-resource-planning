@@ -546,7 +546,7 @@ def _optimize(model, params, from_warm_start=False):
         solver.options['tol'] = params.solver_tol
         solver.options['acceptable_tol'] = params.solver_tol * 1e3
         solver.options['acceptable_iter'] = 5
-        solver.options['nlp_scaling_method'] = 'none'
+        #solver.options['nlp_scaling_method'] = 'none'
         solver.options['max_iter'] = 1000
 
         solver.options['linear_solver'] = params.linear_solver

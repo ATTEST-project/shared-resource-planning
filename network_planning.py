@@ -339,7 +339,7 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                                 v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id][p]
                                 sheet.cell(row=row_idx, column=p + 7).value = v_mag
                                 sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
-                                if v_mag > v_max or v_mag < v_min:
+                                if v_mag > v_max + SMALL_TOLERANCE or v_mag < v_min - SMALL_TOLERANCE:
                                     sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                                 expected_vmag[node_id][p] += v_mag * omega_m * omega_s
                             row_idx = row_idx + 1
@@ -373,7 +373,7 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                 for p in range(network.num_instants):
                     sheet.cell(row=row_idx, column=p + 7).value = expected_vmag[node_id][p]
                     sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
-                    if expected_vmag[node_id][p] > v_max or expected_vmag[node_id][p] < v_min:
+                    if expected_vmag[node_id][p] > v_max + SMALL_TOLERANCE or expected_vmag[node_id][p] < v_min - SMALL_TOLERANCE:
                         sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                 row_idx = row_idx + 1
 
@@ -748,7 +748,7 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                                     pg_curt = results[year][day][s_m][s_o]['generation']['pg_curt'][g][p]
                                     sheet.cell(row=row_idx, column=p + 9).value = pg_curt
                                     sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
-                                    if pg_curt > 0.0:
+                                    if pg_curt > SMALL_TOLERANCE:
                                         sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                                     expected_pg_curt[gen_id][p] += pg_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
@@ -819,7 +819,7 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
                     for p in range(network.num_instants):
                         sheet.cell(row=row_idx, column=p + 9).value = expected_pg_curt[gen_id][p]
                         sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
-                        if expected_pg_curt[gen_id][p] > 0.0:
+                        if expected_pg_curt[gen_id][p] > SMALL_TOLERANCE:
                             sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                     row_idx = row_idx + 1
 
@@ -916,7 +916,7 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
                                     if result_type == 'current_perc':
                                         sheet.cell(row=row_idx, column=p + 8).value = value
                                         sheet.cell(row=row_idx, column=p + 8).number_format = perc_style
-                                        if value > 1.0:
+                                        if value > 1.0 + SMALL_TOLERANCE:
                                             sheet.cell(row=row_idx, column=p + 8).fill = violation_fill
                                     else:
                                         sheet.cell(row=row_idx, column=p + 8).value = value
@@ -939,7 +939,7 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
                         if result_type == 'current_perc':
                             sheet.cell(row=row_idx, column=p + 8).value = expected_values[k][p]
                             sheet.cell(row=row_idx, column=p + 8).number_format = perc_style
-                            if expected_values[k][p] > 1.0:
+                            if expected_values[k][p] > 1.0 + SMALL_TOLERANCE:
                                 sheet.cell(row=row_idx, column=p + 8).fill = violation_fill
                         else:
                             sheet.cell(row=row_idx, column=p + 8).value = expected_values[k][p]
