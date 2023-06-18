@@ -998,16 +998,20 @@ def _run_operational_planning_without_coordination(planning_problem):
     # Do not consider flexible resources
     transmission_network.params.fl_reg = False
     transmission_network.params.es_reg = False
+    transmission_network.params.transf_reg = False
     transmission_network.params.rg_curt = False
     transmission_network.params.l_curt = False
-    transmission_network.params.transf_reg = False
+    transmission_network.params.slack_line_limits = True
+    transmission_network.params.slack_voltage_limits = True
     for node_id in distribution_networks:
         distribution_network = distribution_networks[node_id]
         distribution_network.params.fl_reg = False
         distribution_network.params.es_reg = False
+        distribution_network.params.transf_reg = False
         distribution_network.params.rg_curt = False
         distribution_network.params.l_curt = False
-        distribution_network.params.transf_reg = False
+        distribution_network.params.slack_line_limits = True
+        distribution_network.params.slack_voltage_limits = True
 
     # Shared ESS candidate solution (no hared ESS)
     candidate_solution = dict()
@@ -2524,7 +2528,7 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
                                 v_mag = results[year][day][s_m][s_o]['voltage']['vmag'][node_id][p]
                                 sheet.cell(row=row_idx, column=p + 9).value = v_mag
                                 sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
-                                if v_mag > v_max or v_mag < v_min:
+                                if v_mag > v_max + SMALL_TOLERANCE or v_mag < v_min - SMALL_TOLERANCE:
                                     sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                                 expected_vmag[node_id][p] += v_mag * omega_m * omega_s
                             row_idx = row_idx + 1
@@ -2548,6 +2552,7 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
             for node in network[year][day].nodes:
 
                 node_id = node.bus_i
+                v_min, v_max = network[year][day].get_node_voltage_limits(node_id)
 
                 # Expected voltage magnitude
                 sheet.cell(row=row_idx, column=1).value = operator_type
@@ -2561,7 +2566,7 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
                 for p in range(network[year][day].num_instants):
                     sheet.cell(row=row_idx, column=p + 9).value = expected_vmag[node_id][p]
                     sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
-                    if expected_vmag[node_id][p] > v_max or expected_vmag[node_id][p] < v_min:
+                    if expected_vmag[node_id][p] > v_max + SMALL_TOLERANCE or expected_vmag[node_id][p] < v_min - SMALL_TOLERANCE:
                         sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                 row_idx = row_idx + 1
 
@@ -2619,6 +2624,7 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
 
     decimal_style = '0.00'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     for year in results:
         for day in results[year]:
@@ -2709,6 +2715,8 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                                     pc_curt = results[year][day][s_m][s_o]['consumption']['pc_curt'][node_id][p]
                                     sheet.cell(row=row_idx, column=p + 9).value = pc_curt
                                     sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
+                                    if pc_curt >= SMALL_TOLERANCE:
+                                        sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                                     expected_pc_curt[node_id][p] += pc_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
@@ -2802,12 +2810,14 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                     sheet.cell(row=row_idx, column=3).value = node_id
                     sheet.cell(row=row_idx, column=4).value = int(year)
                     sheet.cell(row=row_idx, column=5).value = day
-                    sheet.cell(row=row_idx, column=6).value = 'Pc_curt Up, [MW]'
+                    sheet.cell(row=row_idx, column=6).value = 'Pc_curt, [MW]'
                     sheet.cell(row=row_idx, column=7).value = 'Expected'
                     sheet.cell(row=row_idx, column=8).value = '-'
                     for p in range(network[year][day].num_instants):
                         sheet.cell(row=row_idx, column=p + 9).value = expected_pc_curt[node_id][p]
                         sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
+                        if expected_pc_curt[node_id][p] >= SMALL_TOLERANCE:
+                            sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                     row_idx = row_idx + 1
 
                 if params.fl_reg or params.l_curt:
@@ -2942,7 +2952,7 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
                                     pg_curt = results[year][day][s_m][s_o]['generation']['pg_curt'][g][p]
                                     sheet.cell(row=row_idx, column=p + 11).value = pg_curt
                                     sheet.cell(row=row_idx, column=p + 11).number_format = decimal_style
-                                    if pg_curt > 0.0:
+                                    if pg_curt > SMALL_TOLERANCE:
                                         sheet.cell(row=row_idx, column=p + 11).fill = violation_fill
                                     expected_pg_curt[gen_id][p] += pg_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
@@ -3021,7 +3031,7 @@ def _write_network_generation_results_per_operator(network, params, sheet, opera
                     for p in range(network[year][day].num_instants):
                         sheet.cell(row=row_idx, column=p + 11).value = expected_pg_curt[gen_id][p]
                         sheet.cell(row=row_idx, column=p + 11).number_format = decimal_style
-                        if expected_pg_curt[gen_id][p] > 0.0:
+                        if expected_pg_curt[gen_id][p] > SMALL_TOLERANCE:
                             sheet.cell(row=row_idx, column=p + 11).fill = violation_fill
                     row_idx = row_idx + 1
 
@@ -3143,7 +3153,7 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
                                     if result_type == 'current_perc':
                                         sheet.cell(row=row_idx, column=p + 10).value = value
                                         sheet.cell(row=row_idx, column=p + 10).number_format = perc_style
-                                        if value > 1.0:
+                                        if value > 1.0 + SMALL_TOLERANCE:
                                             sheet.cell(row=row_idx, column=p + 10).fill = violation_fill
                                     else:
                                         sheet.cell(row=row_idx, column=p + 10).value = value

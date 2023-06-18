@@ -397,6 +397,7 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
     row_idx = 1
     decimal_style = '0.00'
     exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # Write Header
     sheet.cell(row=row_idx, column=1).value = 'Node ID'
@@ -496,6 +497,8 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
                                     pc_curt = results[year][day][s_m][s_o]['consumption']['pc_curt'][node_id][p]
                                     sheet.cell(row=row_idx, column=p + 7).value = pc_curt
                                     sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                                    if pc_curt > SMALL_TOLERANCE:
+                                        sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                                     expected_pc_curt[node_id][p] += pc_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
@@ -542,6 +545,8 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
                                     qc_curt = results[year][day][s_m][s_o]['consumption']['qc_curt'][node_id][p]
                                     sheet.cell(row=row_idx, column=p + 7).value = qc_curt
                                     sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                                    if qc_curt > SMALL_TOLERANCE:
+                                        sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                                     expected_qc_curt[node_id][p] += qc_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
@@ -613,6 +618,8 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
                     for p in range(network.num_instants):
                         sheet.cell(row=row_idx, column=p + 7).value = expected_pc_curt[node_id][p]
                         sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                        if expected_pc_curt[node_id][p] >= SMALL_TOLERANCE:
+                            sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                     row_idx = row_idx + 1
 
                 if network_planning.params.fl_reg or network_planning.params.l_curt:
@@ -653,6 +660,8 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
                     for p in range(network.num_instants):
                         sheet.cell(row=row_idx, column=p + 7).value = expected_qc_curt[node_id][p]
                         sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
+                        if expected_qc_curt[node_id][p] >= SMALL_TOLERANCE:
+                            sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
                     row_idx = row_idx + 1
 
                     # - Reactive power net consumption
