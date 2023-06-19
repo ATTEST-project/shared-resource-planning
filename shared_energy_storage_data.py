@@ -162,8 +162,12 @@ def _build_master_problem(shared_ess_data):
                 total_s_capacity_per_year[x] += model.es_s_invesment[e, y]
                 total_e_capacity_per_year[x] += model.es_e_invesment[e, y]
         for y in model.years:
-            model.rated_s_capacity.add(model.es_s_rated[e, y] == total_s_capacity_per_year[y])
-            model.rated_e_capacity.add(model.es_e_rated[e, y] == total_e_capacity_per_year[y])
+            #model.rated_s_capacity.add(model.es_s_rated[e, y] == total_s_capacity_per_year[y])
+            model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] >= -SMALL_TOLERANCE)
+            model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] <= SMALL_TOLERANCE)
+            #model.rated_e_capacity.add(model.es_e_rated[e, y] == total_e_capacity_per_year[y])
+            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] >= SMALL_TOLERANCE)
+            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] <= -SMALL_TOLERANCE)
 
     # - Maximum Energy Capacity (related to space constraints)
     model.energy_storage_maximum_capacity = pe.ConstraintList()
@@ -290,8 +294,12 @@ def _build_subproblem_model(shared_ess_data):
                 total_s_capacity_per_year[x] += model.es_s_invesment[e, y]
                 total_e_capacity_per_year[x] += model.es_e_invesment[e, y]
         for y in model.years:
-            model.rated_s_capacity.add(model.es_s_rated[e, y] == total_s_capacity_per_year[y])
-            model.rated_e_capacity.add(model.es_e_rated[e, y] == total_e_capacity_per_year[y])
+            #model.rated_s_capacity.add(model.es_s_rated[e, y] == total_s_capacity_per_year[y])
+            model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] >= -SMALL_TOLERANCE)
+            model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] <= SMALL_TOLERANCE)
+            #model.rated_e_capacity.add(model.es_e_rated[e, y] == total_e_capacity_per_year[y])
+            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] >= -SMALL_TOLERANCE)
+            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] <= SMALL_TOLERANCE)
 
     # - Energy capacities available in year y (as a function of degradation)
     model.energy_storage_available_e_capacity = pe.ConstraintList()
@@ -300,7 +308,9 @@ def _build_subproblem_model(shared_ess_data):
             capacity_e_available_year_y = model.es_e_invesment[e, y] * model.es_e_relative_capacity[e, y, y]
             for x in range(y - 1, -1, -1):
                 capacity_e_available_year_y += model.es_e_invesment[e, x] * model.es_e_relative_capacity[e, x, y]
-            model.energy_storage_available_e_capacity.add(model.es_e_capacity_available[e, y] == capacity_e_available_year_y)
+            #model.energy_storage_available_e_capacity.add(model.es_e_capacity_available[e, y] == capacity_e_available_year_y)
+            model.energy_storage_available_e_capacity.add(model.es_e_capacity_available[e, y] - capacity_e_available_year_y >= -SMALL_TOLERANCE)
+            model.energy_storage_available_e_capacity.add(model.es_e_capacity_available[e, y] - capacity_e_available_year_y <= SMALL_TOLERANCE)
 
     # - Yearly degradation
     model.energy_storage_yearly_degradation = pe.ConstraintList()
@@ -326,7 +336,9 @@ def _build_subproblem_model(shared_ess_data):
                             pdch = model.es_p_dch[e, y, d, s_m, s_o, p]
                             total_ch_dch_day += (num_days / 365) * prob_market * prob_operation * (pch + pdch)
 
-            model.energy_storage_yearly_degradation.add(model.es_e_capacity_degradation[e, y] * total_available_capacity == total_ch_dch_day)
+            #model.energy_storage_yearly_degradation.add(model.es_e_capacity_degradation[e, y] * total_available_capacity == total_ch_dch_day)
+            model.energy_storage_yearly_degradation.add(model.es_e_capacity_degradation[e, y] * total_available_capacity - total_ch_dch_day >= -SMALL_TOLERANCE)
+            model.energy_storage_yearly_degradation.add(model.es_e_capacity_degradation[e, y] * total_available_capacity - total_ch_dch_day <= SMALL_TOLERANCE)
 
     # - Relative energy capacity
     # - Reflects the degradation of the capacity invested on ESS e in year Y at year X ahead
@@ -346,7 +358,9 @@ def _build_subproblem_model(shared_ess_data):
                 model.es_e_capacity_degradation[e, x].fixed = False
                 model.es_e_relative_capacity[e, y, x].fixed = False
                 relative_capacity_year_y_in_x *= (1 - model.es_e_capacity_degradation[e, x - 1]) ** (total_days * shared_ess_data.years[repr_years[y]])          # Relative capacity in year y reflects the accumulated degradation
-                model.energy_storage_relative_e_capacity.add(model.es_e_relative_capacity[e, y, x] == relative_capacity_year_y_in_x)
+                #model.energy_storage_relative_e_capacity.add(model.es_e_relative_capacity[e, y, x] == relative_capacity_year_y_in_x)
+                model.energy_storage_relative_e_capacity.add(model.es_e_relative_capacity[e, y, x] - relative_capacity_year_y_in_x >= -SMALL_TOLERANCE)
+                model.energy_storage_relative_e_capacity.add(model.es_e_relative_capacity[e, y, x] - relative_capacity_year_y_in_x <= SMALL_TOLERANCE)
 
     # - P, SoC, Pup and Pdown as a function of available capacities
     model.energy_storage_limits = pe.ConstraintList()
@@ -394,11 +408,13 @@ def _build_subproblem_model(shared_ess_data):
                             pdown = model.es_p_down[e, y, d, s_m, s_o, p]
 
                             if p > 0:
-                                con_balance = model.es_soc[e, y, d, s_m, s_o, p] - model.es_soc[e, y, d, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
-                                model.energy_storage_balance.add(con_balance)
+                                #con_balance = model.es_soc[e, y, d, s_m, s_o, p] - model.es_soc[e, y, d, s_m, s_o, p - 1] == pch * eff_charge - pdch / eff_discharge
+                                model.energy_storage_balance.add(model.es_soc[e, y, d, s_m, s_o, p] - model.es_soc[e, y, d, s_m, s_o, p - 1] - (pch * eff_charge - pdch / eff_discharge) >= -SMALL_TOLERANCE)
+                                model.energy_storage_balance.add(model.es_soc[e, y, d, s_m, s_o, p] - model.es_soc[e, y, d, s_m, s_o, p - 1] - (pch * eff_charge - pdch / eff_discharge) <= SMALL_TOLERANCE)
                             else:
-                                con_balance = model.es_soc[e, y, d, s_m, s_o, p] - soc_init == pch * eff_charge - pdch / eff_discharge
-                                model.energy_storage_balance.add(con_balance)
+                                #con_balance = model.es_soc[e, y, d, s_m, s_o, p] - soc_init == pch * eff_charge - pdch / eff_discharge
+                                model.energy_storage_balance.add(model.es_soc[e, y, d, s_m, s_o, p] - soc_init - (pch * eff_charge - pdch / eff_discharge) >= -SMALL_TOLERANCE)
+                                model.energy_storage_balance.add(model.es_soc[e, y, d, s_m, s_o, p] - soc_init - (pch * eff_charge - pdch / eff_discharge) <= SMALL_TOLERANCE)
 
                             # Charging/dischaging exclusivity constraint
                             if shared_ess_data.params.ess_relax:
@@ -408,7 +424,9 @@ def _build_subproblem_model(shared_ess_data):
                                 model.energy_storage_ch_dch_exclusion.add(model.es_w[e, y, d, s_m, s_o, p] >= model.es_s_rated[e, y] * pch + model.es_s_rated[e, y] * pdch - model.es_s_rated[e, y] ** 2)
                             else:
                                 # NLP formulation
-                                model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
+                                #model.energy_storage_ch_dch_exclusion.add(pch * pdch == 0.00)
+                                model.energy_storage_ch_dch_exclusion.add(pch * pdch >= -SMALL_TOLERANCE)
+                                model.energy_storage_ch_dch_exclusion.add(pch * pdch <= SMALL_TOLERANCE)
 
                             # Secondary reserve -- Bands bounds
                             model.secondary_reserve.add(pdown <= pdch_max - pdch)
@@ -430,8 +448,9 @@ def _build_subproblem_model(shared_ess_data):
                                 capacity_remaining += model.es_s_rated[e, y] - model.es_p_ch[e, y, d, s_m, s_o, t] - model.es_p_dch[e, y, d, s_m, s_o, t]
                             model.secondary_reserve.add(pup_remaining + pdown_remaining <= capacity_remaining / 2.0)
 
-                        con_day_balance = model.es_soc[e, y, d, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
-                        model.energy_storage_day_balance.add(con_day_balance)
+                        #con_day_balance = model.es_soc[e, y, d, s_m, s_o, len(model.periods) - 1] == soc_final  # Note: Final instant.
+                        model.energy_storage_day_balance.add(model.es_soc[e, y, d, s_m, s_o, len(model.periods) - 1] - soc_final >= -SMALL_TOLERANCE)
+                        model.energy_storage_day_balance.add(model.es_soc[e, y, d, s_m, s_o, len(model.periods) - 1] - soc_final <= SMALL_TOLERANCE)
 
             # Expected P and Q
             for d in model.days:
@@ -442,7 +461,9 @@ def _build_subproblem_model(shared_ess_data):
                         for s_o in model.scenarios_operation:
                             prob_oper_scn = shared_ess_data.prob_operation_scenarios[s_o]
                             expected_p += (model.es_p_ch[e, y, d, s_m, s_o, p] - model.es_p_dch[e, y, d, s_m, s_o, p]) * prob_market_scn * prob_oper_scn
-                    model.energy_storage_expected_power.add(model.es_expected_p[e, y, d, p] == expected_p)
+                    #model.energy_storage_expected_power.add(model.es_expected_p[e, y, d, p] == expected_p)
+                    model.energy_storage_expected_power.add(model.es_expected_p[e, y, d, p] - expected_p >= -SMALL_TOLERANCE)
+                    model.energy_storage_expected_power.add(model.es_expected_p[e, y, d, p] - expected_p <= SMALL_TOLERANCE)
 
     # - Secondary Reserve
     for y in model.years:
@@ -457,9 +478,15 @@ def _build_subproblem_model(shared_ess_data):
                         for e in model.energy_storages:
                             pup_period += prob_market * prob_operation * model.es_p_up[e, y, d, s_m, s_o, p]
                             pdown_period += prob_market * prob_operation * model.es_p_down[e, y, d, s_m, s_o, p]
-                model.secondary_reserve.add(model.p_up_total[y, d, p] == pup_period)
-                model.secondary_reserve.add(model.p_down_total[y, d, p] == pdown_period)
-                model.secondary_reserve.add(model.p_up_total[y, d, p] == 2 * model.p_down_total[y, d, p])  # Market splitting rule
+                #model.secondary_reserve.add(model.p_up_total[y, d, p] == pup_period)
+                model.secondary_reserve.add(model.p_up_total[y, d, p] - pup_period >= -SMALL_TOLERANCE)
+                model.secondary_reserve.add(model.p_up_total[y, d, p] - pup_period <= SMALL_TOLERANCE)
+                #model.secondary_reserve.add(model.p_down_total[y, d, p] == pdown_period)
+                model.secondary_reserve.add(model.p_down_total[y, d, p] - pdown_period >= -SMALL_TOLERANCE)
+                model.secondary_reserve.add(model.p_down_total[y, d, p] - pdown_period <= SMALL_TOLERANCE)
+                #model.secondary_reserve.add(model.p_up_total[y, d, p] == 2 * model.p_down_total[y, d, p])  # Market splitting rule
+                model.secondary_reserve.add(model.p_up_total[y, d, p] - 2 * model.p_down_total[y, d, p] >= -SMALL_TOLERANCE)
+                model.secondary_reserve.add(model.p_up_total[y, d, p] - 2 * model.p_down_total[y, d, p] <= SMALL_TOLERANCE)
 
     # - Sensitivities - Einv and Sinv as a function of Einv_fixed and Sinv_fixed
     model.sensitivities_s = pe.ConstraintList()
