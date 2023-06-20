@@ -166,8 +166,8 @@ def _build_master_problem(shared_ess_data):
             model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] >= -SMALL_TOLERANCE)
             model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] <= SMALL_TOLERANCE)
             #model.rated_e_capacity.add(model.es_e_rated[e, y] == total_e_capacity_per_year[y])
-            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] >= SMALL_TOLERANCE)
-            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] <= -SMALL_TOLERANCE)
+            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] >= -SMALL_TOLERANCE)
+            model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] <= SMALL_TOLERANCE)
 
     # - Maximum Energy Capacity (related to space constraints)
     model.energy_storage_maximum_capacity = pe.ConstraintList()

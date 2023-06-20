@@ -3832,17 +3832,9 @@ def _plot_networkx_diagram(planning_problem):
                     ref_nodes.append(node.bus_i)
                 elif node.type == BUS_PV:
                     pv_nodes.append(node.bus_i)
-                    if transmission_network.has_energy_storage_device(node.bus_i):
-                        pv_nodes_edge.append('black')
-                    else:
-                        pv_nodes_edge.append('none')
                 elif node.type == BUS_PQ:
                     if node.bus_i not in (res_pv_nodes + res_wind_nodes + adn_nodes):
                         pq_nodes.append(node.bus_i)
-                        if transmission_network.has_energy_storage_device(node.bus_i):
-                            pq_nodes_edge.append('black')
-                        else:
-                            pq_nodes_edge.append('none')
             for i in range(len(branches)):
                 branch = branches[i]
                 if branch['type'] == 'line':
