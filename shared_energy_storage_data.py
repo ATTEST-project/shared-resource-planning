@@ -52,6 +52,9 @@ class SharedEnergyStorageData:
     def build_subproblem(self):
         return _build_subproblem_model(self)
 
+    def get_initial_candidate_solution(self):
+        return _get_initial_candidate_solution(self)
+
     def optimize(self, model, from_warm_start=False):
         print('[INFO] \t\t - Running Shared ESS optimization...')
         return _optimize(model, self.params.solver_params, from_warm_start=from_warm_start)
@@ -531,7 +534,7 @@ def _build_subproblem_model(shared_ess_data):
                             pdown = model.es_p_down[e, y, d, s_m, s_o, p]
                             r_up_activ = r_activation_up[year][day][s_o][p]               # Share of upward reserve activation
                             r_down_activ = r_activation_down[year][day][s_o][p]           # Share of downward reserve activation
-                            operational_cost += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                      # Cost energy, active (positive)
+                            #operational_cost += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                      # Cost energy, active (positive)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * c_r_sec[year][day][s_m][p] * (pup + pdown)                 # Revenue secondary reserve (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_up[year][day][s_m][p] * pup * r_up_activ)         # Revenue secondary reserve upward activation (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)   # Revenue secondary reserve downward activation (negative)
@@ -574,7 +577,7 @@ def _optimize(model, params, from_warm_start=False):
         solver.options['acceptable_tol'] = params.solver_tol * 1e3
         solver.options['acceptable_iter'] = 5
         #solver.options['nlp_scaling_method'] = 'none'
-        solver.options['max_iter'] = 1000
+        solver.options['max_iter'] = 10000
 
         solver.options['linear_solver'] = params.linear_solver
         if params.linear_solver == 'pardiso':
@@ -873,7 +876,7 @@ def _compute_primal_value(shared_ess_data, model):
                             pdown = pe.value(model.es_p_down[e, y, d, s_m, s_o, p])
                             r_up_activ = r_activation_up[year][day][s_o][p]         # Share of upward reserve activation
                             r_down_activ = r_activation_down[year][day][s_o][p]     # Share of downward reserve activation
-                            obj += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                     # Cost energy, active (positive)
+                            #obj += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                     # Cost energy, active (positive)
                             obj -= annualization * num_years * num_days * prob_market * prob_operation * c_r_sec[year][day][s_m][p] * (pup + pdown)                # Revenue secondary reserve (negative)
                             obj -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_up[year][day][s_m][p] * pup * r_up_activ)        # Revenue secondary reserve upward activation (negative)
                             obj -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)  # Revenue secondary reserve downward activation (negative)

@@ -78,6 +78,9 @@ class SharedResourcesPlanning:
     def plot_diagram(self):
         _plot_networkx_diagram(self)
 
+    def get_initial_candidate_solution(self):
+        return _get_initial_candidate_solution(self)
+
     def write_operational_planning_results_to_excel(self, tso_model, dso_models, esso_model, results, primal_evolution=list()):
         filename = self.filename.replace('.txt', '') + '_operational_planning_results'
         processed_results = _process_operational_planning_results(self, tso_model, dso_models, esso_model, results)
@@ -119,22 +122,8 @@ def _run_planning_problem(planning_problem):
     upper_bound = shared_ess_parameters.budget * 1e3
     lower_bound_evolution = [lower_bound]
     upper_bound_evolution = [upper_bound]
-    candidate_solution = {'investment': {}, 'total_capacity': {}}
-    operational_results = {'tso': dict(), 'dso': dict(), 'esso': dict()}
-    for e in range(len(planning_problem.active_distribution_network_nodes)):
-        node_id = planning_problem.active_distribution_network_nodes[e]
-        candidate_solution['investment'][node_id] = dict()
-        candidate_solution['total_capacity'][node_id] = dict()
-        for year in planning_problem.years:
-            candidate_solution['investment'][node_id][year] = dict()
-            candidate_solution['investment'][node_id][year]['s'] = 0.00
-            candidate_solution['investment'][node_id][year]['e'] = 0.00
-            candidate_solution['total_capacity'][node_id][year] = dict()
-            candidate_solution['total_capacity'][node_id][year]['s'] = 0.00
-            candidate_solution['total_capacity'][node_id][year]['e'] = 0.00
+    candidate_solution = planning_problem.get_initial_candidate_solution()
 
-    # 0.1. Models creation and initialization
-    # - Create and warm-start master and subproblem models
     start = time.time()
     esso_master_problem_model = shared_ess_data.build_master_problem()
 
@@ -147,35 +136,36 @@ def _run_planning_problem(planning_problem):
         _print_candidate_solution(candidate_solution)
 
         # 1. Subproblem
-        # 1.1. Solve operational planning, with fixed investment variables and
+        # 1.1. Solve operational planning, with fixed investment variables,
         # 1.2. Get coupling constraints' sensitivities (subproblem)
-        operational_results, sensitivities, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
-
         # 1.3. Get OF value (upper bound) from the subproblem
+        operational_results, sensitivities, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
         upper_bound = shared_ess_data.compute_primal_value(lower_level_models['esso'])
+        upper_bound_evolution.append(upper_bound)
 
-        # 2. Solve Master problem
-        # 2.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
-        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities, candidate_solution['investment'])
-
-        # 2.2. Run master problem optimization
-        shared_ess_data.optimize(esso_master_problem_model)
-
-        # 2.3. Get new capacity values, and the value of alpha (lower bound)
-        candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
-        lower_bound = pe.value(esso_master_problem_model.alpha)
-
-        # 3. Convergence check
+        #  - Convergence check
         if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
-            upper_bound_evolution.append(upper_bound)
             lower_bound_evolution.append(lower_bound)
             convergence = True
             break
 
-        # 3.1. Update iter, update bounds evolution
-        iter += 1
-        upper_bound_evolution.append(upper_bound)
+        # 2. Solve Master problem
+        # 2.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
+        # 2.2. Run master problem optimization
+        # 2.3. Get new capacity values, and the value of alpha (lower bound)
+        shared_ess_data.add_benders_cut(esso_master_problem_model, upper_bound, sensitivities, candidate_solution['investment'])
+        shared_ess_data.optimize(esso_master_problem_model)
+        candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
+        lower_bound = pe.value(esso_master_problem_model.alpha)
         lower_bound_evolution.append(lower_bound)
+
+        # - Convergence check
+        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
+            upper_bound_evolution.append(upper_bound)
+            convergence = True
+            break
+
+        iter += 1
 
     if not convergence:
         print('[WARNING] Convergence not obtained!')
@@ -3740,8 +3730,8 @@ def _write_network_energy_storages_results_per_operator(network, sheet, operator
                             sheet.cell(row=row_idx, column=8).value = s_o
                             for p in range(network[year][day].num_instants):
                                 ess_soc_percent = results[year][day][s_m][s_o]['energy_storages']['soc_percent'][node_id][p]
-                                sheet.cell(row=row_idx, column=p + 8).value = ess_soc_percent
-                                sheet.cell(row=row_idx, column=p + 8).number_format = percent_style
+                                sheet.cell(row=row_idx, column=p + 9).value = ess_soc_percent
+                                sheet.cell(row=row_idx, column=p + 9).number_format = percent_style
                                 if ess_soc_percent != 'N/A':
                                     expected_soc_percent[node_id][p] += ess_soc_percent * omega_m * omega_s
                                 else:
@@ -3875,6 +3865,22 @@ def _plot_networkx_diagram(planning_problem):
 # ======================================================================================================================
 #   Aux functions
 # ======================================================================================================================
+def _get_initial_candidate_solution(planning_problem):
+    candidate_solution = {'investment': {}, 'total_capacity': {}}
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution['investment'][node_id] = dict()
+        candidate_solution['total_capacity'][node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution['investment'][node_id][year] = dict()
+            candidate_solution['investment'][node_id][year]['s'] = 0.10
+            candidate_solution['investment'][node_id][year]['e'] = 0.40
+            candidate_solution['total_capacity'][node_id][year] = dict()
+            candidate_solution['total_capacity'][node_id][year]['s'] = 0.10
+            candidate_solution['total_capacity'][node_id][year]['e'] = 0.40
+    return candidate_solution
+
+
 def _add_shared_energy_storage_to_transmission_network(planning_problem):
     for year in planning_problem.years:
         for day in planning_problem.days:

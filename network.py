@@ -1037,7 +1037,7 @@ def _run_smopf(network, model, params, from_warm_start=False):
         solver.options['acceptable_tol'] = params.solver_params.solver_tol * 1e3
         solver.options['acceptable_iter'] = 5
         solver.options['nlp_scaling_method'] = 'none'
-        solver.options['max_iter'] = 1000
+        solver.options['max_iter'] = 10000
 
         solver.options['linear_solver'] = params.solver_params.linear_solver
         if params.solver_params.linear_solver == 'pardiso':

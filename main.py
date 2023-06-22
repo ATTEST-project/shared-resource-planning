@@ -57,9 +57,26 @@ def shared_resources_planning(working_directory, specification_filename):
 
     planning_problem = SharedResourcesPlanning(working_directory, specification_filename)
     planning_problem.read_planning_problem()
-    planning_problem.plot_diagram()
-    planning_problem.run_without_coordination()
+    #planning_problem.plot_diagram()
+    #planning_problem.run_without_coordination()
     planning_problem.run_planning_problem()
+
+    '''
+    candidate_solution = {'investment': {}, 'total_capacity': {}}
+    for e in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[e]
+        candidate_solution['investment'][node_id] = dict()
+        candidate_solution['total_capacity'][node_id] = dict()
+        for year in planning_problem.years:
+            candidate_solution['investment'][node_id][year] = dict()
+            candidate_solution['investment'][node_id][year]['s'] = 0.00
+            candidate_solution['investment'][node_id][year]['e'] = 0.00
+            candidate_solution['total_capacity'][node_id][year] = dict()
+            candidate_solution['total_capacity'][node_id][year]['s'] = 0.00
+            candidate_solution['total_capacity'][node_id][year]['e'] = 0.00
+    operational_results, _, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
+    planning_problem.write_operational_planning_results_to_excel(lower_level_models['tso'], lower_level_models['dso'], lower_level_models['esso'], operational_results)
+    '''
 
     '''
     transmission_network = planning_problem.transmission_network
