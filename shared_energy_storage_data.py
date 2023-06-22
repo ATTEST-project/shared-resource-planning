@@ -534,7 +534,7 @@ def _build_subproblem_model(shared_ess_data):
                             pdown = model.es_p_down[e, y, d, s_m, s_o, p]
                             r_up_activ = r_activation_up[year][day][s_o][p]               # Share of upward reserve activation
                             r_down_activ = r_activation_down[year][day][s_o][p]           # Share of downward reserve activation
-                            #operational_cost += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                      # Cost energy, active (positive)
+                            operational_cost += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                      # Cost energy, active (positive)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * c_r_sec[year][day][s_m][p] * (pup + pdown)                 # Revenue secondary reserve (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_up[year][day][s_m][p] * pup * r_up_activ)         # Revenue secondary reserve upward activation (negative)
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)   # Revenue secondary reserve downward activation (negative)
@@ -876,7 +876,7 @@ def _compute_primal_value(shared_ess_data, model):
                             pdown = pe.value(model.es_p_down[e, y, d, s_m, s_o, p])
                             r_up_activ = r_activation_up[year][day][s_o][p]         # Share of upward reserve activation
                             r_down_activ = r_activation_down[year][day][s_o][p]     # Share of downward reserve activation
-                            #obj += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                     # Cost energy, active (positive)
+                            obj += annualization * num_years * num_days * prob_market * prob_operation * c_p[year][day][s_m][p] * (pch - pdch)                     # Cost energy, active (positive)
                             obj -= annualization * num_years * num_days * prob_market * prob_operation * c_r_sec[year][day][s_m][p] * (pup + pdown)                # Revenue secondary reserve (negative)
                             obj -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_up[year][day][s_m][p] * pup * r_up_activ)        # Revenue secondary reserve upward activation (negative)
                             obj -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)  # Revenue secondary reserve downward activation (negative)
