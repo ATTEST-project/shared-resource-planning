@@ -52,9 +52,6 @@ class SharedEnergyStorageData:
     def build_subproblem(self):
         return _build_subproblem_model(self)
 
-    def get_initial_candidate_solution(self):
-        return _get_initial_candidate_solution(self)
-
     def optimize(self, model, from_warm_start=False):
         print('[INFO] \t\t - Running Shared ESS optimization...')
         return _optimize(model, self.params.solver_params, from_warm_start=from_warm_start)
