@@ -10,12 +10,12 @@ Winter	182
 
 NumInstants: 24
 
-Discount Factor: 0.01
+Discount Factor: 0.03
 
 Market Data
 CS1_market_data
 
-Distribution Networks: 10
+Distribution Networks: 2
 case18_1	case18_params.txt	34
 case18_2	case18_params.txt	31
 case18_3	case18_params.txt	36
