@@ -18,6 +18,14 @@ CS1_market_data
 Distribution Networks: 2
 case18_1	case18_params.txt	34
 case18_2	case18_params.txt	31
+case18_3	case18_params.txt	36
+case18_4	case18_params.txt	37
+case18_5	case18_params.txt	56
+case18_6	case18_params.txt	25
+case18_7	case18_params.txt	23
+case18_8	case18_params.txt	26
+case18_9	case18_params.txt	28
+case18_10	case18_params.txt	29
 
 Transmission Network
 case57	case57_params.txt
