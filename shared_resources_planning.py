@@ -143,11 +143,14 @@ def _run_planning_problem(planning_problem):
         operational_results, sensitivities, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
         upper_bound = shared_ess_data.compute_primal_value(lower_level_models['esso'])
         upper_bound_evolution.append(upper_bound)
+        print('[INFO] ESSO. Estimated profit: {:.6f}'.format(upper_bound))
 
         #  - Convergence check
         if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
             convergence = True
             break
+
+        iter += 1
 
         # 2. Solve Master problem
         # 2.1. Add Benders' cut, based on the sensitivities obtained from the subproblem
@@ -158,13 +161,6 @@ def _run_planning_problem(planning_problem):
         candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
         lower_bound = pe.value(esso_master_problem_model.alpha)
         lower_bound_evolution.append(lower_bound)
-
-        # - Convergence check
-        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
-            convergence = True
-            break
-
-        iter += 1
 
     if not convergence:
         print('[WARNING] Convergence not obtained!')
