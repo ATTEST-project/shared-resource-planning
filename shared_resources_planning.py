@@ -146,7 +146,8 @@ def _run_planning_problem(planning_problem):
         print('[INFO] ESSO. Estimated profit: {:.6f}'.format(-upper_bound))
 
         #  - Convergence check
-        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel) or lower_bound >= upper_bound:
+        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
+            lower_bound_evolution.append(lower_bound)
             convergence = True
             break
 
@@ -161,6 +162,10 @@ def _run_planning_problem(planning_problem):
         candidate_solution = shared_ess_data.get_candidate_solution(esso_master_problem_model)
         lower_bound = pe.value(esso_master_problem_model.alpha)
         lower_bound_evolution.append(lower_bound)
+
+        if lower_bound >= upper_bound:
+            convergence = True
+            break
 
     if not convergence:
         print('[WARNING] Convergence not obtained!')
