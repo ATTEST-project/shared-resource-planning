@@ -146,7 +146,7 @@ def _run_planning_problem(planning_problem):
         print('[INFO] ESSO. Estimated profit: {:.6f}'.format(-upper_bound))
 
         #  - Convergence check
-        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
+        if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel) or lower_bound >= upper_bound:
             convergence = True
             break
 
