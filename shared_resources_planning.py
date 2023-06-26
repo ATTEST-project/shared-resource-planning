@@ -122,8 +122,8 @@ def _run_planning_problem(planning_problem):
     upper_bound = shared_ess_parameters.budget * 1e3
     lower_bound_evolution = [lower_bound]
     upper_bound_evolution = [upper_bound]
-    #candidate_solution = planning_problem.get_initial_candidate_solution()
-    candidate_solution = shared_ess_data.get_initial_candidate_solution()
+    candidate_solution = planning_problem.get_initial_candidate_solution()
+    #candidate_solution = shared_ess_data.get_initial_candidate_solution()
 
     start = time.time()
     esso_master_problem_model = shared_ess_data.build_master_problem()
@@ -143,7 +143,7 @@ def _run_planning_problem(planning_problem):
         operational_results, sensitivities, lower_level_models = planning_problem.run_operational_planning(candidate_solution)
         upper_bound = shared_ess_data.compute_primal_value(lower_level_models['esso'])
         upper_bound_evolution.append(upper_bound)
-        print('[INFO] ESSO. Estimated profit: {:.6f}'.format(upper_bound))
+        print('[INFO] ESSO. Estimated profit: {:.6f}'.format(-upper_bound))
 
         #  - Convergence check
         if isclose(upper_bound, lower_bound, abs_tol=benders_parameters.tol_abs, rel_tol=benders_parameters.tol_rel):
