@@ -256,7 +256,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
         planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
 
         # 2.2 Update primal evolution
-        primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
+        primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
 
         # 2.3 STOPPING CRITERIA evaluation
         if iter >= 1:
