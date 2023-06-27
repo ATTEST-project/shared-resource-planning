@@ -878,13 +878,16 @@ def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_mod
                     dual_vars['dso'][node_id][year][day]['p'][t] += params.rho['ESSO'] * (error_p_ess_distr)
 
 
-def compute_primal_value(planning_problem, tso_model, esso_model):
+def compute_primal_value(planning_problem, tso_model, dso_models, esso_model):
 
     transmission_network = planning_problem.transmission_network
+    distribution_networks = planning_problem.distribution_networks
     shared_ess_data = planning_problem.shared_ess_data
 
     primal_value = 0.0
     primal_value += transmission_network.compute_primal_value(tso_model, transmission_network.params)
+    for node_id in distribution_networks:
+        primal_value +=distribution_networks[node_id].compute_primal_value(dso_models[node_id], distribution_networks[node_id].params)
     if esso_model:
         primal_value += shared_ess_data.compute_primal_value(esso_model)
 
