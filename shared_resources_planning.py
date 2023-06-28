@@ -2429,7 +2429,7 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
                 # State-of-Charge, [MVAh]
                 row_idx = row_idx + 1
                 sheet.cell(row=row_idx, column=1).value = node_id
-                sheet.cell(row=row_idx, column=2).value = 'TSO'
+                sheet.cell(row=row_idx, column=2).value = 'DSO'
                 sheet.cell(row=row_idx, column=3).value = int(year)
                 sheet.cell(row=row_idx, column=4).value = day
                 sheet.cell(row=row_idx, column=5).value = 'SoC, [MVAh]'
@@ -2442,7 +2442,7 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
                 # State-of-Charge, [%]
                 row_idx = row_idx + 1
                 sheet.cell(row=row_idx, column=1).value = node_id
-                sheet.cell(row=row_idx, column=2).value = 'TSO'
+                sheet.cell(row=row_idx, column=2).value = 'DSO'
                 sheet.cell(row=row_idx, column=3).value = int(year)
                 sheet.cell(row=row_idx, column=4).value = day
                 sheet.cell(row=row_idx, column=5).value = 'SoC, [%]'
