@@ -433,7 +433,7 @@ def _build_model(network, params):
                 for s_o in model.scenarios_operation:
                     for p in model.periods:
                         if branch.ratio != 0.0:
-                            model.r[i, s_m, s_o, p].fix(branch.ratio)
+                            model.r[i, s_m, s_o, p].fix(branch.ratio)            # Voltage regulation device, use given ratio
                         else:
                             model.r[i, s_m, s_o, p].fix(1.00)
 
@@ -711,8 +711,13 @@ def _build_model(network, params):
                                 Pg -= model.pg_curt[g, s_m, s_o, p]
                             Qg += model.qg[g, s_m, s_o, p]
 
-                    Pi = 0.0
-                    Qi = 0.0
+                    ei, fi = model.e[i], model.f[i]
+                    if params.slack_voltage_limits:
+                        ei += model.slack_e_up[i] - model.slack_e_down[i]
+                        fi += model.slack_f_up[i] - model.slack_f_down[i]
+
+                    Pi = -node.gs * (ei ** 2 + fi ** 2)
+                    Qi = -node.bs * (ei ** 2 + fi ** 2)
                     for b in range(len(network.branches)):
                         branch = network.branches[b]
                         if branch.fbus == node.bus_i or branch.tbus == node.bus_i:
@@ -720,11 +725,12 @@ def _build_model(network, params):
                             if branch.fbus == node.bus_i:
                                 fnode_idx = network.get_node_idx(branch.fbus)
                                 tnode_idx = network.get_node_idx(branch.tbus)
+                                rij = model.r[b, s_m, s_o, p]
                             else:
                                 fnode_idx = network.get_node_idx(branch.tbus)
                                 tnode_idx = network.get_node_idx(branch.fbus)
+                                rij = 1 / model.r[b, s_m, s_o, p]
 
-                            rij = model.r[b, s_m, s_o, p]
                             ei, fi = model.e[fnode_idx, s_m, s_o, p], model.f[fnode_idx, s_m, s_o, p]
                             ej, fj = model.e[tnode_idx, s_m, s_o, p], model.f[tnode_idx, s_m, s_o, p]
                             if params.slack_voltage_limits:
