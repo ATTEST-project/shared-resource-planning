@@ -51,8 +51,10 @@ class SharedResourcesPlanning:
         print('[INFO] Running PLANNING PROBLEM WITHOUT COORDINATION...')
         _run_operational_planning_without_coordination(self)
 
-    def run_operational_planning(self, candidate_solution):
+    def run_operational_planning(self, candidate_solution=dict()):
         print('[INFO] Running OPERATIONAL PLANNING...')
+        if not candidate_solution:
+            candidate_solution = self.get_initial_candidate_solution()
         return _run_operational_planning(self, candidate_solution)
 
     def update_models_with_candidate_solution(self, tso_model, dso_models, esso_model, candidate_solution):
@@ -275,7 +277,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
         planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
 
         # 3.2 Update primal evolution
-        primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
+        primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
 
         # 3.3 STOPPING CRITERIA evaluation
         if iter >= 1:
@@ -293,7 +295,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
         planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
 
         # 4.2 Update primal evolution
-        primal_evolution.append(compute_primal_value(planning_problem, tso_model, esso_model))
+        primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
 
         # 4.3 STOPPING CRITERIA evaluation
         convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
