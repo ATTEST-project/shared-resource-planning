@@ -422,17 +422,20 @@ def _build_model(network, params):
             for s_m in model.scenarios_market:
                 for s_o in model.scenarios_operation:
                     for p in model.periods:
-                        if params.transf_reg:
+                        if params.transf_reg and branch.vmag_reg:
                             model.r[i, s_m, s_o, p].setub(TRANSFORMER_MAXIMUM_RATIO)
                             model.r[i, s_m, s_o, p].setlb(TRANSFORMER_MINIMUM_RATIO)
                         else:
-                            model.r[i, s_m, s_o, p].fix(1.00)
+                            model.r[i, s_m, s_o, p].fix(branch.ratio)
         else:
-            # - Line
+            # - Line, or FACTS
             for s_m in model.scenarios_market:
                 for s_o in model.scenarios_operation:
                     for p in model.periods:
-                        model.r[i, s_m, s_o, p].fix(1.00)
+                        if branch.ratio != 0.0:
+                            model.r[i, s_m, s_o, p].fix(branch.ratio)
+                        else:
+                            model.r[i, s_m, s_o, p].fix(1.00)
 
     # - Energy Storage devices
     if params.es_reg:
@@ -1225,9 +1228,12 @@ def _read_branches_from_file(network, lines, i):
         tnode_base_v = network.get_node_base_voltage(branch.tbus)
         if fnode_base_v != tnode_base_v:
             branch.is_transformer = True
-            branch.vmag_reg = True
-            if network.is_transmission:
-                branch.vang_reg = True
+            if branch.ratio == 0.00:
+                branch.vmag_reg = False
+                branch.ratio = 1.00
+        else:
+            if branch.ratio == 0.00:
+                branch.ratio == 1.00
 
         branches.append(branch)
         i = i + 1
