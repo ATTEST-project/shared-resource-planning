@@ -355,7 +355,7 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
                                 v_ang = results[year][day][s_m][s_o]['voltage']['vang'][node_id][p]
                                 sheet.cell(row=row_idx, column=p + 7).value = v_ang
                                 sheet.cell(row=row_idx, column=p + 7).number_format = decimal_style
-                                expected_vang[node_id][p] += v_mag * omega_m * omega_s
+                                expected_vang[node_id][p] += v_ang * omega_m * omega_s
                             row_idx = row_idx + 1
 
             for node in network.nodes:
