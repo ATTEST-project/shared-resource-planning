@@ -1393,7 +1393,7 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
     wb = Workbook()
 
     # Planning results
-    _write_main_info_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results)
+    #_write_main_info_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results)
     _write_ess_capacity_investment_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['investment'])
     _write_ess_capacity_available_to_excel(planning_problem.shared_ess_data, wb, shared_ess_capacity['available'])
     _write_secondary_reserve_bands_to_excel(planning_problem.shared_ess_data, wb, shared_ess_processed_results['results'])
