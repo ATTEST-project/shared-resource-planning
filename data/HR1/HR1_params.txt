@@ -8,10 +8,7 @@ admm_tol = 5e-2
 admm_num_max_iters = 100
 
 rho
-Location1 = 0.10
-A_BJ_35_1 = 0.10
-A_BJ_35_2 = 0.10
-A_KPC_35_1 = 0.10
-A_KPC_35_2 = 0.10
-A_KPC_35_3 = 0.10
+case30 = 0.10
+case18_1 = 0.10
+case33_1 = 0.10
 ESSO = 0.10

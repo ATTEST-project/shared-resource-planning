@@ -1,27 +1,23 @@
 Years: 1
-2020	10
-2030	10
 2040	10
+2030	10
+2020	10
 2050	10
 
-Days: 1
-Summer	365
+Days: 2
+Summer	183
 Winter	182
 
 NumInstants: 24
 
-Discount Factor: 0.03
+Discount Factor: 0.02
 
 Market Data
 HR1_market_data
 
-Distribution Networks: 1
-A_KPC_35	A_KPC_35_params.txt	55
-A_KPC_35_1	A_KPC_35_1_params.txt	55
-A_KPC_35_2	A_KPC_35_2_params.txt	68
-A_KPC_35_3	A_KPC_35_3_params.txt	29
-A_BJ_35_1	A_BJ_35_1_params.txt	1
-A_BJ_35_2	A_BJ_35_2_params.txt	19
+Distribution Networks: 0
+case18_1	case18_params.txt	24
+case33_1	case33_params.txt	16
 
 Transmission Network
 Location1	Location1_params.txt

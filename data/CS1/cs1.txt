@@ -4,25 +4,26 @@ Years: 4
 2040	10
 2050	10
 
-Days: 1
-Summer	365
+Days: 2
+Summer	183
 Winter	182
 
 NumInstants: 24
 
-Discount Factor: 0.03
+Discount Factor: 0.02
 
 Market Data
-cs1_market_data
+CS1_market_data
 
 Distribution Networks: 1
-case18	case18_params.txt	2
+case18_1	case18_params.txt	24
+case33_1	case33_params.txt	16
 
 Transmission Network
-case57	case57_params.txt
+case30	case30_params.txt
 
 Shared Energy Storage
-cs1_ESS_Params.txt	cs1_ESS.xlsx
+CS1_ESS_Params.txt	CS1_ESS.xlsx
 
 Planning Parameters
-cs1_params.txt
+CS1_params.txt
