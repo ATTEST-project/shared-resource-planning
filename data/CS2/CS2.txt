@@ -15,7 +15,7 @@ Discount Factor: 0.02
 Market Data
 CS1_market_data
 
-Distribution Networks: 1
+Distribution Networks: 2
 case18_1	case18_params.txt	24
 case33_1	case33_params.txt	16
 
