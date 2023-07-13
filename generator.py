@@ -43,3 +43,8 @@ class Generator:
         if self.gen_type in GEN_CURTAILLABLE_TYPES:
             return True
         return False
+
+    def is_renewable(self):
+        if self.gen_type in GEN_RENEWABLE_TYPES:
+            return True
+        return False

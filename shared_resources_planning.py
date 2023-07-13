@@ -994,8 +994,8 @@ def _run_operational_planning_without_coordination(planning_problem):
     transmission_network.params.fl_reg = False
     transmission_network.params.es_reg = False
     transmission_network.params.transf_reg = False
-    transmission_network.params.rg_curt = False
-    transmission_network.params.l_curt = False
+    transmission_network.params.rg_curt = True
+    transmission_network.params.l_curt = True
     transmission_network.params.slack_line_limits = True
     transmission_network.params.slack_voltage_limits = True
     for node_id in distribution_networks:
@@ -1003,8 +1003,8 @@ def _run_operational_planning_without_coordination(planning_problem):
         distribution_network.params.fl_reg = False
         distribution_network.params.es_reg = False
         distribution_network.params.transf_reg = False
-        distribution_network.params.rg_curt = False
-        distribution_network.params.l_curt = False
+        distribution_network.params.rg_curt = True
+        distribution_network.params.l_curt = True
         distribution_network.params.slack_line_limits = True
         distribution_network.params.slack_voltage_limits = True
 
@@ -1403,7 +1403,7 @@ def _write_planning_results_to_excel(planning_problem, shared_ess_processed_resu
 
     # Operational Planning Results
     if operational_planning_processed_results:
-        _write_objective_function_values(wb, operational_planning_processed_results)
+        _write_operational_planning_main_info_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_shared_energy_storages_results_to_excel(planning_problem, wb, operational_planning_processed_results)
         _write_interface_power_flow_results_to_excel(planning_problem, wb, operational_planning_processed_results['interface'])
         _write_network_voltage_results_to_excel(planning_problem, wb, operational_planning_processed_results)
@@ -1694,7 +1694,7 @@ def _write_operational_planning_results_to_excel(planning_problem, results, prim
 
     wb = Workbook()
 
-    _write_objective_function_values(wb, results)
+    _write_operational_planning_main_info_to_excel(wb, results)
     _write_shared_ess_specifications(wb, planning_problem.shared_ess_data)
 
     if primal_evolution:
@@ -1731,7 +1731,7 @@ def _write_operational_planning_results_no_coordination_to_excel(planning_proble
 
     wb = Workbook()
 
-    _write_objective_function_values(wb, results)
+    _write_operational_planning_main_info_to_excel(planning_problem, wb, results)
 
     #  TSO and DSOs' results
     _write_network_voltage_results_to_excel(planning_problem, wb, results)
@@ -1755,70 +1755,232 @@ def _write_operational_planning_results_no_coordination_to_excel(planning_proble
         wb.save(backup_filename)
 
 
-def _write_objective_function_values(workbook, results):
+def _write_operational_planning_main_info_to_excel(planning_problem, workbook, results):
 
     sheet = workbook.worksheets[0]
-    sheet.title = 'OF Values'
+    sheet.title = 'Main Info'
 
     decimal_style = '0.00'
+    line_idx = 1
 
     # Write Header
-    row_idx = 1
-    col_idx = 1
-    sheet.cell(row=row_idx, column=col_idx).value = 'Agent'
-    col_idx += 1
-    sheet.cell(row=row_idx, column=col_idx).value = 'Node ID'
-    col_idx += 1
-    for year in results['tso']['results']:
-        for day in results['tso']['results'][year]:
-            sheet.cell(row=row_idx, column=col_idx).value = f'{year}, {day}, [m.u.]'
+    col_idx = 4
+    for year in planning_problem.years:
+        for _ in planning_problem.days:
+            sheet.cell(row=line_idx, column=col_idx).value = year
             col_idx += 1
-    sheet.cell(row=row_idx, column=col_idx).value = 'Total, [NPV Mm.u.]'
 
+    col_idx = 1
+    line_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Agent'
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Node ID'
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Value'
+    col_idx += 1
+
+    for _ in planning_problem.years:
+        for day in planning_problem.days:
+            sheet.cell(row=line_idx, column=col_idx).value = day
+            col_idx += 1
+
+    # ESSO
     if 'esso' in results:
-        row_idx = row_idx + 1
+        line_idx += 1
         col_idx = 1
-        sheet.cell(row=row_idx, column=col_idx).value = 'ESSO'
+        sheet.cell(row=line_idx, column=col_idx).value = 'ESSO'
         col_idx += 1
-        sheet.cell(row=row_idx, column=col_idx).value = '-'
+        sheet.cell(row=line_idx, column=col_idx).value = '-'
+        col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = 'Objective (cost), [€]'
         col_idx += 1
         for year in results['esso']['results']:
             for day in results['esso']['results'][year]:
-                sheet.cell(row=row_idx, column=col_idx).value = results['esso']['results'][year][day]['obj']
-                sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+                sheet.cell(row=line_idx, column=col_idx).value = results['esso']['results'][year][day]['obj']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
                 col_idx += 1
-        sheet.cell(row=row_idx, column=col_idx).value = results['esso']['of_value'] / 1e6
-        sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
 
-    row_idx = row_idx + 1
+    # TSO
+    line_idx = _write_operational_planning_main_info_per_operator(planning_problem.transmission_network, sheet, 'TSO', line_idx, results['tso']['results'])
+
+    # DSOs
+    for tn_node_id in results['dso']:
+        dso_results = results['dso'][tn_node_id]['results']
+        distribution_network = planning_problem.distribution_networks[tn_node_id]
+        line_idx = _write_operational_planning_main_info_per_operator(distribution_network, sheet, 'DSO', line_idx, dso_results, tn_node_id=tn_node_id)
+
+
+def _write_operational_planning_main_info_per_operator(network, sheet, operator_type, line_idx, results, tn_node_id='-'):
+
+    decimal_style = '0.00'
+
+    line_idx += 1
     col_idx = 1
-    sheet.cell(row=row_idx, column=col_idx).value = 'TSO'
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
     col_idx += 1
-    sheet.cell(row=row_idx, column=col_idx).value = '-'
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
     col_idx += 1
-    for year in results['tso']['results']:
-        for day in results['tso']['results'][year]:
-            sheet.cell(row=row_idx, column=col_idx).value = results['tso']['results'][year][day]['obj']
-            sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
-            col_idx += 1
-    sheet.cell(row=row_idx, column=col_idx).value = results['tso']['of_value'] / 1e6
-    sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
 
-    row_idx = row_idx + 1
-    for node_id in results['dso']:
+    # - Objective
+    obj_string = 'Objective'
+    if network.params.obj_type == OBJ_MIN_COST:
+        obj_string += ' (cost), [€]'
+    elif network.params.obj_type == OBJ_CONGESTION_MANAGEMENT:
+        obj_string += ' (congestion management)'
+    sheet.cell(row=line_idx, column=col_idx).value = obj_string
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            sheet.cell(row=line_idx, column=col_idx).value = results[year][day]['obj']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+
+    # Total Load
+    line_idx += 1
+    col_idx = 1
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Load, [MWh]'
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            load_aux = results[year][day]['total_load']
+            if network.params.l_curt:
+                load_aux -= results[year][day]['load_curt']
+            sheet.cell(row=line_idx, column=col_idx).value = load_aux
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+
+    # Flexibility used
+    if network.params.fl_reg:
+        line_idx += 1
         col_idx = 1
-        sheet.cell(row=row_idx, column=col_idx).value = 'DSO'
+        sheet.cell(row=line_idx, column=col_idx).value = operator_type
         col_idx += 1
-        sheet.cell(row=row_idx, column=col_idx).value = node_id
+        sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
         col_idx += 1
-        for year in results['tso']['results']:
-            for day in results['dso'][node_id]['results'][year]:
-                sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['results'][year][day]['obj']
-                sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
+        sheet.cell(row=line_idx, column=col_idx).value = 'Flexibility used, [MWh]'
+        col_idx += 1
+        for year in results:
+            for day in results[year]:
+                sheet.cell(row=line_idx, column=col_idx).value = results[year][day]['flex_used']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
                 col_idx += 1
-        sheet.cell(row=row_idx, column=col_idx).value = results['dso'][node_id]['of_value'] / 1e6
-        sheet.cell(row=row_idx, column=col_idx).number_format = decimal_style
-        row_idx += 1
+
+    # Total Load curtailed
+    if network.params.l_curt:
+        line_idx += 1
+        col_idx = 1
+        sheet.cell(row=line_idx, column=col_idx).value = operator_type
+        col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+        col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = 'Load curtailed, [MWh]'
+        col_idx += 1
+        for year in results:
+            for day in results[year]:
+                sheet.cell(row=line_idx, column=col_idx).value = results[year][day]['load_curt']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
+
+    # Total Generation
+    line_idx += 1
+    col_idx = 1
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Generation, [MWh]'
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            gen_aux = results[year][day]['total_gen']
+            if network.params.rg_curt:
+                gen_aux -= results[year][day]['gen_curt']
+            sheet.cell(row=line_idx, column=col_idx).value = gen_aux
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+
+    # Total Renewable Generation
+    line_idx += 1
+    col_idx = 1
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Renewable generation, [MWh]'
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            gen_aux = results[year][day]['total_renewable_gen']
+            if network.params.rg_curt:
+                gen_aux -= results[year][day]['gen_curt']
+            sheet.cell(row=line_idx, column=col_idx).value = gen_aux
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+
+    # Renewable Generation Curtailed
+    if network.params.rg_curt:
+        line_idx += 1
+        col_idx = 1
+        sheet.cell(row=line_idx, column=col_idx).value = operator_type
+        col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+        col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = 'Renewable generation curtailed, [MWh]'
+        col_idx += 1
+        for year in results:
+            for day in results[year]:
+                sheet.cell(row=line_idx, column=col_idx).value = results[year][day]['gen_curt']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
+
+    # Losses
+    line_idx += 1
+    col_idx = 1
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Losses, [MWh]'
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            sheet.cell(row=line_idx, column=col_idx).value = results[year][day]['total_gen'] - results[year][day]['total_load']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+
+    # Number of price (market) scenarios
+    line_idx += 1
+    col_idx = 1
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Number of market scenarios'
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            sheet.cell(row=line_idx, column=col_idx).value = len(network.network[year][day].prob_market_scenarios)
+            col_idx += 1
+
+    # Number of operation (generation and consumption) scenarios
+    line_idx += 1
+    col_idx = 1
+    sheet.cell(row=line_idx, column=col_idx).value = operator_type
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = tn_node_id
+    col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = 'Number of operation scenarios'
+    col_idx += 1
+    for year in results:
+        for day in results[year]:
+            sheet.cell(row=line_idx, column=col_idx).value = len(network.network[year][day].prob_operation_scenarios)
+            col_idx += 1
+
+    return line_idx
 
 
 def _write_shared_ess_specifications(workbook, shared_ess_info):
@@ -2027,7 +2189,7 @@ def _write_shared_energy_storages_results_to_excel(planning_problem, workbook, r
     row_idx = 1
     decimal_style = '0.00'
     percent_style = '0.00%'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     # Write Header
     sheet.cell(row=row_idx, column=1).value = 'Node ID'
@@ -2489,7 +2651,7 @@ def _write_network_voltage_results_per_operator(network, sheet, operator_type, r
 
     decimal_style = '0.00'
 
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     for year in results:
@@ -2618,7 +2780,7 @@ def _write_network_consumption_results_to_excel(planning_problem, workbook, resu
 def _write_network_consumption_results_per_operator(network, params, sheet, operator_type, row_idx, results, tn_node_id='-'):
 
     decimal_style = '0.00'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     for year in results:
@@ -2885,7 +3047,7 @@ def _write_network_generation_results_to_excel(planning_problem, workbook, resul
 def _write_network_generation_results_per_operator(network, params, sheet, operator_type, row_idx, results, tn_node_id='-'):
 
     decimal_style = '0.00'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     for year in results:
@@ -3107,7 +3269,7 @@ def _write_network_branch_results_per_operator(network, sheet, operator_type, ro
 
     decimal_style = '0.00'
     perc_style = '0.00%'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     aux_string = str()
@@ -3218,7 +3380,7 @@ def _write_network_power_flow_results_per_operator(network, sheet, operator_type
 
     decimal_style = '0.00'
     perc_style = '0.00%'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     for year in results:
         for day in results[year]:
@@ -3669,7 +3831,7 @@ def _write_network_energy_storages_results_per_operator(network, sheet, operator
 
     decimal_style = '0.00'
     percent_style = '0.00%'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     for year in results:
         for day in results[year]:

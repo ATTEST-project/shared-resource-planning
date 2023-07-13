@@ -218,6 +218,107 @@ def _write_main_info_to_excel(network_planning, workbook, results):
     sheet.cell(row=line_idx, column=col_idx).value = total_of
     sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
 
+    # Total Load
+    col_idx = 2
+    line_idx += 1
+    total_load = 0.0
+    sheet.cell(row=line_idx, column=1).value = 'Load, [MWh]'
+    for year in network_planning.years:
+        for day in network_planning.days:
+            total_load += results['results'][year][day]['total_load']
+            sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['total_load']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = total_load
+    sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
+    # Flexibility used
+    if network_planning.params.fl_reg:
+        col_idx = 2
+        line_idx += 1
+        total_flex = 0.0
+        sheet.cell(row=line_idx, column=1).value = 'Flexibility used, [MWh]'
+        for year in network_planning.years:
+            for day in network_planning.days:
+                total_flex += results['results'][year][day]['flex_used']
+                sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['flex_used']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = total_flex
+        sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
+    # Total Load curtailed
+    if network_planning.params.l_curt:
+        col_idx = 2
+        line_idx += 1
+        total_curt = 0.0
+        sheet.cell(row=line_idx, column=1).value = 'Load curtailed, [MWh]'
+        for year in network_planning.years:
+            for day in network_planning.days:
+                total_curt += results['results'][year][day]['load_curt']
+                sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['load_curt']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = total_curt
+        sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
+    # Total Generation
+    col_idx = 2
+    line_idx += 1
+    total_gen = 0.0
+    sheet.cell(row=line_idx, column=1).value = 'Generation, [MWh]'
+    for year in network_planning.years:
+        for day in network_planning.days:
+            total_gen += results['results'][year][day]['total_gen']
+            sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['total_gen']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = total_gen
+    sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
+    # Total Renewable Generation
+    col_idx = 2
+    line_idx += 1
+    total_renewable_gen = 0.0
+    sheet.cell(row=line_idx, column=1).value = 'Renewable generation, [MWh]'
+    for year in network_planning.years:
+        for day in network_planning.days:
+            total_renewable_gen += results['results'][year][day]['total_renewable_gen']
+            sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['total_renewable_gen']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = total_renewable_gen
+    sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
+    # Renewable Generation Curtailed
+    if network_planning.params.rg_curt:
+        col_idx = 2
+        line_idx += 1
+        total_renewable_gen_curt = 0.0
+        sheet.cell(row=line_idx, column=1).value = 'Renewable generation curtailed, [MWh]'
+        for year in network_planning.years:
+            for day in network_planning.days:
+                total_renewable_gen_curt += results['results'][year][day]['gen_curt']
+                sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['gen_curt']
+                sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+                col_idx += 1
+        sheet.cell(row=line_idx, column=col_idx).value = total_renewable_gen_curt
+        sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
+    # Losses
+    col_idx = 2
+    line_idx += 1
+    total_losses = 0.0
+    sheet.cell(row=line_idx, column=1).value = 'Losses, [MWh]'
+    for year in network_planning.years:
+        for day in network_planning.days:
+            total_losses += results['results'][year][day]['total_gen'] - results['results'][year][day]['total_load']
+            sheet.cell(row=line_idx, column=col_idx).value = results['results'][year][day]['total_gen'] - results['results'][year][day]['total_load']
+            sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+            col_idx += 1
+    sheet.cell(row=line_idx, column=col_idx).value = total_losses
+    sheet.cell(row=line_idx, column=col_idx).number_format = decimal_style
+
     # Execution time
     col_idx = 2
     line_idx += 1
@@ -293,7 +394,7 @@ def _write_network_voltage_results_to_excel(network_planning, workbook, results)
 
     row_idx = 1
     decimal_style = '0.00'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # Write Header
@@ -396,7 +497,7 @@ def _write_network_consumption_results_to_excel(network_planning, workbook, resu
 
     row_idx = 1
     decimal_style = '0.00'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # Write Header
@@ -683,7 +784,7 @@ def _write_network_generation_results_to_excel(network_planning, workbook, resul
 
     row_idx = 1
     decimal_style = '0.00'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # Write Header
@@ -878,7 +979,7 @@ def _write_network_branch_results_to_excel(network_planning, workbook, results, 
     row_idx = 1
     decimal_style = '0.00'
     perc_style = '0.00%'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
     violation_fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     sheet = workbook.create_sheet(sheet_name)
@@ -963,7 +1064,7 @@ def _write_network_branch_power_flow_results_to_excel(network_planning, workbook
     row_idx = 1
     decimal_style = '0.00'
     perc_style = '0.00%'
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     # Write Header
     sheet.cell(row=row_idx, column=1).value = 'From Node ID'
@@ -1349,7 +1450,7 @@ def _write_network_energy_storage_results_to_excel(network_planning, workbook, r
     decimal_style = '0.00'
     perc_style = '0.00%'
 
-    exclusions = ['runtime', 'obj', 'gen_cost', 'losses', 'gen_curt', 'load_curt', 'flex_used']
+    exclusions = ['runtime', 'obj', 'gen_cost', 'total_load', 'total_gen', 'total_renewable_gen', 'losses', 'gen_curt', 'load_curt', 'flex_used']
 
     # Write Header
     sheet.cell(row=row_idx, column=1).value = 'Node ID'

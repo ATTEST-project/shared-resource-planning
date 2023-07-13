@@ -104,6 +104,13 @@ class Network:
         print(f'[ERROR] Network {self.name}. Node {node_id} not found! Check network.')
         exit(ERROR_NETWORK_FILE)
 
+    def get_branch_idx(self, branch):
+        for b in range(len(self.branches)):
+            if self.branches[b].fbus == branch.fbus and self.branches[b].tbus == branch.tbus:
+                return b
+        print(f'[ERROR] Network {self.name}. No Branch connecting bus {branch.fbus} and bus {branch.tbus} found! Check network.')
+        exit(ERROR_NETWORK_FILE)
+
     def get_gen_idx(self, node_id):
         for g in range(len(self.generators)):
             gen = self.generators[g]
@@ -231,9 +238,7 @@ def _build_model(network, params):
     # ------------------------------------------------------------------------------------------------------------------
     # Decision variables
     # - Voltage
-    ref_gen_idx = network.get_gen_idx(ref_node_id)
-    vg = network.generators[ref_gen_idx].vg
-    model.e = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=vg)
+    model.e = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=1.0)
     model.f = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=0.0)
     if params.slack_voltage_limits:
         model.slack_e_up = pe.Var(model.nodes, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.NonNegativeReals, initialize=0.00)
@@ -244,22 +249,53 @@ def _build_model(network, params):
         node = network.nodes[i]
         e_lb, e_ub = -node.v_max, node.v_max
         f_lb, f_ub = -node.v_max, node.v_max
-        for s_m in model.scenarios_market:
-            for s_o in model.scenarios_operation:
-                for p in model.periods:
-                    model.e[i, s_m, s_o, p].setlb(e_lb)
-                    model.e[i, s_m, s_o, p].setub(e_ub)
-                    model.f[i, s_m, s_o, p].setlb(f_lb)
-                    model.f[i, s_m, s_o, p].setub(f_ub)
-                    if params.slack_voltage_limits:
-                        model.slack_e_up[i, s_m, s_o, p].setlb(e_lb)
-                        model.slack_e_up[i, s_m, s_o, p].setub(e_ub)
-                        model.slack_e_down[i, s_m, s_o, p].setlb(e_lb)
-                        model.slack_e_down[i, s_m, s_o, p].setub(e_ub)
-                        model.slack_f_up[i, s_m, s_o, p].setlb(f_lb)
-                        model.slack_f_up[i, s_m, s_o, p].setub(f_ub)
-                        model.slack_f_down[i, s_m, s_o, p].setlb(f_lb)
-                        model.slack_f_down[i, s_m, s_o, p].setub(f_ub)
+        if node.type == BUS_REF:
+            if network.is_transmission:
+                for s_m in model.scenarios_market:
+                    for s_o in model.scenarios_operation:
+                        for p in model.periods:
+                            model.e[i, s_m, s_o, p].setlb(e_lb)
+                            model.e[i, s_m, s_o, p].setub(e_ub)
+                            model.f[i, s_m, s_o, p].fix(0.0)
+                            if params.slack_voltage_limits:
+                                model.slack_e_up[i, s_m, s_o, p].setlb(e_lb)
+                                model.slack_e_up[i, s_m, s_o, p].setub(e_ub)
+                                model.slack_e_down[i, s_m, s_o, p].setlb(e_lb)
+                                model.slack_e_down[i, s_m, s_o, p].setub(e_ub)
+                                model.slack_f_up[i, s_m, s_o, p].setlb(f_lb)
+                                model.slack_f_up[i, s_m, s_o, p].setub(f_ub)
+                                model.slack_f_down[i, s_m, s_o, p].setlb(f_lb)
+                                model.slack_f_down[i, s_m, s_o, p].setub(f_ub)
+            else:
+                ref_gen_idx = network.get_gen_idx(node.bus_i)
+                vg = network.generators[ref_gen_idx].vg
+                for s_m in model.scenarios_market:
+                    for s_o in model.scenarios_operation:
+                        for p in model.periods:
+                            model.e[i, s_m, s_o, p].fix(vg)
+                            model.f[i, s_m, s_o, p].fix(0.0)
+                            if params.slack_voltage_limits:
+                                model.slack_e_up[i, s_m, s_o, p].fix(0.0)
+                                model.slack_e_down[i, s_m, s_o, p].fix(0.0)
+                                model.slack_f_up[i, s_m, s_o, p].fix(0.0)
+                                model.slack_f_down[i, s_m, s_o, p].fix(0.0)
+        else:
+            for s_m in model.scenarios_market:
+                for s_o in model.scenarios_operation:
+                    for p in model.periods:
+                        model.e[i, s_m, s_o, p].setlb(e_lb)
+                        model.e[i, s_m, s_o, p].setub(e_ub)
+                        model.f[i, s_m, s_o, p].setlb(f_lb)
+                        model.f[i, s_m, s_o, p].setub(f_ub)
+                        if params.slack_voltage_limits:
+                            model.slack_e_up[i, s_m, s_o, p].setlb(e_lb)
+                            model.slack_e_up[i, s_m, s_o, p].setub(e_ub)
+                            model.slack_e_down[i, s_m, s_o, p].setlb(e_lb)
+                            model.slack_e_down[i, s_m, s_o, p].setub(e_ub)
+                            model.slack_f_up[i, s_m, s_o, p].setlb(f_lb)
+                            model.slack_f_up[i, s_m, s_o, p].setub(f_ub)
+                            model.slack_f_down[i, s_m, s_o, p].setlb(f_lb)
+                            model.slack_f_down[i, s_m, s_o, p].setub(f_ub)
 
     # - Generation
     model.pg = pe.Var(model.generators, model.scenarios_market, model.scenarios_operation, model.periods, domain=pe.Reals, initialize=0.0)
@@ -482,21 +518,7 @@ def _build_model(network, params):
     model.voltage_cons = pe.ConstraintList()
     for i in model.nodes:
         node = network.nodes[i]
-        if node.type == BUS_REF:
-            ref_gen_idx = network.get_gen_idx(ref_node_id)
-            vg = network.generators[ref_gen_idx].vg
-            for s_m in model.scenarios_market:
-                for s_o in model.scenarios_operation:
-                    for p in model.periods:
-                        model.f[i, s_m, s_o, p].fix(0.0)
-                        if params.slack_voltage_limits:
-                            model.slack_e_up[i, s_m, s_o, p].fix(0.0)
-                            model.slack_e_down[i, s_m, s_o, p].fix(0.0)
-                            model.slack_f_up[i, s_m, s_o, p].fix(0.0)
-                            model.slack_f_down[i, s_m, s_o, p].fix(0.0)
-                        model.e[i, s_m, s_o, p].setub(max(node.v_min, min(node.v_max, vg)))      # Ensure it's within the limits
-                        model.e[i, s_m, s_o, p].setlb(min(node.v_max, max(node.v_min, vg)))
-        elif node.type == BUS_PV:
+        if node.type == BUS_PV:
             if params.enforce_vg:
                 # - Enforce voltage controlled bus
                 gen_idx = network.get_gen_idx(node.bus_i)
@@ -713,33 +735,48 @@ def _build_model(network, params):
                         ei += model.slack_e_up[i, s_m, s_o, p] - model.slack_e_down[i, s_m, s_o, p]
                         fi += model.slack_f_up[i, s_m, s_o, p] - model.slack_f_down[i, s_m, s_o, p]
 
-                    Pi = -node.gs * (ei ** 2 + fi ** 2)
+                    Pi = node.gs * (ei ** 2 + fi ** 2)
                     Qi = -node.bs * (ei ** 2 + fi ** 2)
                     for b in range(len(network.branches)):
                         branch = network.branches[b]
                         if branch.fbus == node.bus_i or branch.tbus == node.bus_i:
 
+                            rij = 1 / model.r[b, s_m, s_o, p]
+
                             if branch.fbus == node.bus_i:
+
                                 fnode_idx = network.get_node_idx(branch.fbus)
                                 tnode_idx = network.get_node_idx(branch.tbus)
-                                rij = model.r[b, s_m, s_o, p]
+                                ei, fi = model.e[fnode_idx, s_m, s_o, p], model.f[fnode_idx, s_m, s_o, p]
+                                ej, fj = model.e[tnode_idx, s_m, s_o, p], model.f[tnode_idx, s_m, s_o, p]
+
+                                if params.slack_voltage_limits:
+                                    ei += model.slack_e_up[fnode_idx, s_m, s_o, p] - model.slack_e_down[fnode_idx, s_m, s_o, p]
+                                    fi += model.slack_f_up[fnode_idx, s_m, s_o, p] - model.slack_f_down[fnode_idx, s_m, s_o, p]
+                                    ej += model.slack_e_up[tnode_idx, s_m, s_o, p] - model.slack_e_down[tnode_idx, s_m, s_o, p]
+                                    fj += model.slack_f_up[tnode_idx, s_m, s_o, p] - model.slack_f_down[tnode_idx, s_m, s_o, p]
+
+                                Pi += branch.g * (ei ** 2 + fi ** 2) * rij**2
+                                Pi -= rij * (branch.g * (ei * ej + fi * fj) + branch.b * (fi * ej - ei * fj))
+                                Qi -= (branch.b + branch.b_sh * 0.5) * (ei ** 2 + fi ** 2) * rij**2
+                                Qi += rij * (branch.b * (ei * ej + fi * fj) - branch.g * (fi * ej - ei * fj))
                             else:
+
                                 fnode_idx = network.get_node_idx(branch.tbus)
                                 tnode_idx = network.get_node_idx(branch.fbus)
-                                rij = 1 / model.r[b, s_m, s_o, p]
+                                ei, fi = model.e[fnode_idx, s_m, s_o, p], model.f[fnode_idx, s_m, s_o, p]
+                                ej, fj = model.e[tnode_idx, s_m, s_o, p], model.f[tnode_idx, s_m, s_o, p]
 
-                            ei, fi = model.e[fnode_idx, s_m, s_o, p], model.f[fnode_idx, s_m, s_o, p]
-                            ej, fj = model.e[tnode_idx, s_m, s_o, p], model.f[tnode_idx, s_m, s_o, p]
-                            if params.slack_voltage_limits:
-                                ei += model.slack_e_up[fnode_idx, s_m, s_o, p] - model.slack_e_down[fnode_idx, s_m, s_o, p]
-                                fi += model.slack_f_up[fnode_idx, s_m, s_o, p] - model.slack_f_down[fnode_idx, s_m, s_o, p]
-                                ej += model.slack_e_up[tnode_idx, s_m, s_o, p] - model.slack_e_down[tnode_idx, s_m, s_o, p]
-                                fj += model.slack_f_up[tnode_idx, s_m, s_o, p] - model.slack_f_down[tnode_idx, s_m, s_o, p]
+                                if params.slack_voltage_limits:
+                                    ei += model.slack_e_up[fnode_idx, s_m, s_o, p] - model.slack_e_down[fnode_idx, s_m, s_o, p]
+                                    fi += model.slack_f_up[fnode_idx, s_m, s_o, p] - model.slack_f_down[fnode_idx, s_m, s_o, p]
+                                    ej += model.slack_e_up[tnode_idx, s_m, s_o, p] - model.slack_e_down[tnode_idx, s_m, s_o, p]
+                                    fj += model.slack_f_up[tnode_idx, s_m, s_o, p] - model.slack_f_down[tnode_idx, s_m, s_o, p]
 
-                            Pi += branch.g * (ei ** 2 + fi ** 2)
-                            Pi -= rij * (branch.g * (ei * ej + fi * fj) + branch.b * (fi * ej - ei * fj))
-                            Qi -= (branch.b + branch.b_sh * 0.5) * (ei ** 2 + fi ** 2)
-                            Qi += rij * (branch.b * (ei * ej + fi * fj) - branch.g * (fi * ej - ei * fj))
+                                Pi += branch.g * (ei ** 2 + fi ** 2)
+                                Pi -= rij * (branch.g * (ei * ej + fi * fj) + branch.b * (fi * ej - ei * fj))
+                                Qi -= (branch.b + branch.b_sh * 0.5) * (ei ** 2 + fi ** 2)
+                                Qi += rij * (branch.b * (ei * ej + fi * fj) - branch.g * (fi * ej - ei * fj))
 
                     #model.node_balance_cons_p.add(Pg - Pd == Pi)
                     #model.node_balance_cons_q.add(Qg - Qd == Qi)
@@ -1843,6 +1880,9 @@ def _process_results(network, model, params, results=dict()):
     processed_results = dict()
     processed_results['obj'] = _compute_objective_function_value(network, model, params)
     processed_results['gen_cost'] = _compute_generation_cost(network, model)
+    processed_results['total_load'] = _compute_total_load(network, model, params)
+    processed_results['total_gen'] = _compute_total_generation(network, model, params)
+    processed_results['total_renewable_gen'] = _compute_renewable_generation(network, model, params)
     processed_results['losses'] = _compute_losses(network, model, params)
     processed_results['gen_curt'] = _compute_generation_curtailment(network, model, params)
     processed_results['load_curt'] = _compute_load_curtailment(network, model, params)
@@ -2296,6 +2336,61 @@ def _compute_generation_cost(network, model):
     return gen_cost
 
 
+def _compute_total_load(network, model, params):
+
+    total_load = 0.0
+
+    for s_m in model.scenarios_market:
+        for s_o in model.scenarios_operation:
+            total_load_scenario = 0.0
+            for i in model.nodes:
+                for p in model.periods:
+                    total_load_scenario += network.baseMVA * pe.value(model.pc[i, s_m, s_o, p])
+                    if params.l_curt:
+                        total_load_scenario -= network.baseMVA * pe.value(model.pc_curt[i, s_m, s_o, p])
+
+            total_load += total_load_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
+
+    return total_load
+
+
+def _compute_total_generation(network, model, params):
+
+    total_renewable_gen = 0.0
+
+    for s_m in model.scenarios_market:
+        for s_o in model.scenarios_operation:
+            total_renewable_gen_scenario = 0.0
+            for g in model.generators:
+                for p in model.periods:
+                    total_renewable_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
+                    if params.rg_curt:
+                        total_renewable_gen_scenario -= network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
+
+            total_renewable_gen += total_renewable_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
+
+    return total_renewable_gen
+
+
+def _compute_renewable_generation(network, model, params):
+
+    total_renewable_gen = 0.0
+
+    for s_m in model.scenarios_market:
+        for s_o in model.scenarios_operation:
+            total_renewable_gen_scenario = 0.0
+            for g in model.generators:
+                if network.generators[g].is_renewable():
+                    for p in model.periods:
+                        total_renewable_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
+                        if params.rg_curt:
+                            total_renewable_gen_scenario += network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
+
+            total_renewable_gen += total_renewable_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
+
+    return total_renewable_gen
+
+
 def _compute_losses(network, model, params):
 
     power_losses = 0.0
@@ -2378,7 +2473,13 @@ def _get_branch_power_flow(network, params, branch, fbus, tbus, model, s_m, s_o,
 
     fbus_idx = network.get_node_idx(fbus)
     tbus_idx = network.get_node_idx(tbus)
+    branch_idx = network.get_branch_idx(branch)
+    if branch.fbus == fbus:
+        direction = 1
+    else:
+        direction = 0
 
+    rij = 1 / pe.value(model.r[branch_idx, s_m, s_o, p])
     ei = pe.value(model.e[fbus_idx, s_m, s_o, p])
     fi = pe.value(model.f[fbus_idx, s_m, s_o, p])
     ej = pe.value(model.e[tbus_idx, s_m, s_o, p])
@@ -2389,12 +2490,21 @@ def _get_branch_power_flow(network, params, branch, fbus, tbus, model, s_m, s_o,
         ej += pe.value(model.slack_e_up[tbus_idx, s_m, s_o, p] - model.slack_e_down[tbus_idx, s_m, s_o, p])
         fj += pe.value(model.slack_f_up[tbus_idx, s_m, s_o, p] - model.slack_f_down[tbus_idx, s_m, s_o, p])
 
-    pij = branch.g * (ei ** 2 + fi ** 2)
-    pij -= branch.g * (ei * ej + fi * fj)
-    pij -= branch.b * (fi * ej - ei * fj)
+    if direction:
+        pij = branch.g * (ei ** 2 + fi ** 2) * rij**2
+        pij -= branch.g * (ei * ej + fi * fj) * rij
+        pij -= branch.b * (fi * ej - ei * fj) * rij
 
-    qij = - (branch.b + branch.b_sh * 0.50) * (ei ** 2 + fi ** 2)
-    qij += branch.b * (ei * ej + fi * fj)
-    qij -= branch.g * (fi * ej - ei * fj)
+        qij = - (branch.b + branch.b_sh * 0.50) * (ei ** 2 + fi ** 2) * rij**2
+        qij += branch.b * (ei * ej + fi * fj) * rij
+        qij -= branch.g * (fi * ej - ei * fj) * rij
+    else:
+        pij = branch.g * (ei ** 2 + fi ** 2)
+        pij -= branch.g * (ei * ej + fi * fj) * rij
+        pij -= branch.b * (fi * ej - ei * fj) * rij
+
+        qij = - (branch.b + branch.b_sh * 0.50) * (ei ** 2 + fi ** 2)
+        qij += branch.b * (ei * ej + fi * fj) * rij
+        qij -= branch.g * (fi * ej - ei * fj) * rij
 
     return pij * network.baseMVA, qij * network.baseMVA
