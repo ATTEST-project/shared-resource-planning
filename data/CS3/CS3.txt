@@ -23,7 +23,7 @@ Transmission Network
 case30	case30_params.txt
 
 Shared Energy Storage
-CS3_ESS_Params.txt	CS1_ESS.xlsx
+CS3_ESS_Params.txt	CS3_ESS.xlsx
 
 Planning Parameters
 CS3_params.txt
