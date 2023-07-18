@@ -2356,20 +2356,20 @@ def _compute_total_load(network, model, params):
 
 def _compute_total_generation(network, model, params):
 
-    total_renewable_gen = 0.0
+    total_gen = 0.0
 
     for s_m in model.scenarios_market:
         for s_o in model.scenarios_operation:
-            total_renewable_gen_scenario = 0.0
+            total_gen_scenario = 0.0
             for g in model.generators:
                 for p in model.periods:
-                    total_renewable_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
+                    total_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
                     if params.rg_curt:
-                        total_renewable_gen_scenario -= network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
+                        total_gen_scenario -= network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
 
-            total_renewable_gen += total_renewable_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
+            total_gen += total_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
 
-    return total_renewable_gen
+    return total_gen
 
 
 def _compute_renewable_generation(network, model, params):
@@ -2384,7 +2384,7 @@ def _compute_renewable_generation(network, model, params):
                     for p in model.periods:
                         total_renewable_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
                         if params.rg_curt:
-                            total_renewable_gen_scenario += network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
+                            total_renewable_gen_scenario -= network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
 
             total_renewable_gen += total_renewable_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
 
