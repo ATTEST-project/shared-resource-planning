@@ -79,11 +79,13 @@ def shared_resources_planning(working_directory, specification_filename):
     planning_problem.write_operational_planning_results_to_excel(lower_level_models['tso'], lower_level_models['dso'], lower_level_models['esso'], operational_results)
     '''
 
+    '''
     transmission_network = planning_problem.transmission_network
     tn_model = transmission_network.build_model()
     results = transmission_network.optimize(tn_model)
     processed_results = transmission_network.process_results(tn_model, results)
     transmission_network.write_optimization_results_to_excel(processed_results)
+    '''
 
     distribution_networks = planning_problem.distribution_networks
     for node_id in distribution_networks:

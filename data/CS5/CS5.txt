@@ -13,19 +13,19 @@ NumInstants: 24
 Discount Factor: 0.02
 
 Market Data
-CS4_market_data
+CS5_market_data
 
-Distribution Networks: 1
-case33_1	case33_params.txt	24
+Distribution Networks: 4
 case18_1	case18_params.txt	24
 case18_2	case18_params.txt	16
 case18_3	case18_params.txt	18
+case33_1	case33_params.txt	26
 
 Transmission Network
 case30	case30_params.txt
 
 Shared Energy Storage
-CS4_ESS_Params.txt	CS4_ESS.xlsx
+CS5_ESS_Params.txt	CS_ESS.xlsx
 
 Planning Parameters
-CS4_params.txt
+CS5_params.txt
