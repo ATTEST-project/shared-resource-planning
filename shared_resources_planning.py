@@ -2873,7 +2873,7 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                                     sheet.cell(row=row_idx, column=p + 9).value = pc_curt
                                     sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                                     if pc_curt >= SMALL_TOLERANCE:
-                                        sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
+                                        sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                                     expected_pc_curt[node_id][p] += pc_curt * omega_m * omega_s
                                 row_idx = row_idx + 1
 
@@ -2974,7 +2974,7 @@ def _write_network_consumption_results_per_operator(network, params, sheet, oper
                         sheet.cell(row=row_idx, column=p + 9).value = expected_pc_curt[node_id][p]
                         sheet.cell(row=row_idx, column=p + 9).number_format = decimal_style
                         if expected_pc_curt[node_id][p] >= SMALL_TOLERANCE:
-                            sheet.cell(row=row_idx, column=p + 7).fill = violation_fill
+                            sheet.cell(row=row_idx, column=p + 9).fill = violation_fill
                     row_idx = row_idx + 1
 
                 if params.fl_reg or params.l_curt:
