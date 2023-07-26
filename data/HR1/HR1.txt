@@ -15,7 +15,7 @@ Discount Factor: 0.02
 Market Data
 HR1_market_data
 
-Distribution Networks: 3
+Distribution Networks: 6
 A_KPC_35_1	A_KPC_35_params.txt	29
 A_KPC_35_2	A_KPC_35_params.txt	1
 A_KPC_35_3	A_KPC_35_params.txt	19
