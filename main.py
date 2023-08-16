@@ -79,6 +79,7 @@ def shared_resources_planning(working_directory, specification_filename):
         distribution_network.write_optimization_results_to_excel(processed_results)
     '''
 
+
     print('==========================================================================================================')
     print('                                               END                                                        ')
     print('==========================================================================================================')
