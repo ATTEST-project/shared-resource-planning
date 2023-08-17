@@ -269,8 +269,10 @@ def _build_subproblem_model(shared_ess_data):
     model.es_e_invesment = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                       # Invesment in energy capacity in year y (complicating variable)
     model.es_s_invesment_fixed = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                 # Benders' -- used to get the dual variables (sensitivities)
     model.es_e_invesment_fixed = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)                 # (...)
-    model.slack_up = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)             # Benders' -- ensures feasibility of the subproblem (numerical issues)
-    model.slack_down = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)           # (...)
+    model.slack_s_up = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)           # Benders' -- ensures feasibility of the subproblem (numerical issues)
+    model.slack_s_down = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)         # (...)
+    model.slack_e_up = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)           # (...)
+    model.slack_e_down = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals, initialize=0.0)         # (...)
     for e in model.energy_storages:
         for y in model.years:
             model.es_e_capacity_degradation[e, y].setub(1.00)
@@ -504,8 +506,8 @@ def _build_subproblem_model(shared_ess_data):
     for e in model.energy_storages:
         for y in model.years:
             # Note: slack variables added to ensure feasibility (numerical issues)
-            model.sensitivities_s.add(model.es_s_invesment[e, y] == model.es_s_invesment_fixed[e, y] + (model.slack_up[e, y] - model.slack_down[e, y]))
-            model.sensitivities_e.add(model.es_e_invesment[e, y] == model.es_e_invesment_fixed[e, y] + (model.slack_up[e, y] - model.slack_down[e, y]))
+            model.sensitivities_s.add(model.es_s_invesment[e, y] == model.es_s_invesment_fixed[e, y] + (model.slack_s_up[e, y] - model.slack_s_down[e, y]))
+            model.sensitivities_e.add(model.es_e_invesment[e, y] == model.es_e_invesment_fixed[e, y] + (model.slack_e_up[e, y] - model.slack_e_down[e, y]))
 
     # ------------------------------------------------------------------------------------------------------------------
     # Objective function
@@ -547,8 +549,8 @@ def _build_subproblem_model(shared_ess_data):
                             operational_cost -= annualization * num_years * num_days * prob_market * prob_operation * (c_r_ter_down[year][day][s_m][p] * pdown * r_down_activ)   # Revenue secondary reserve downward activation (negative)
 
             # Slack Penalty
-            slack_penalty += 1e7 * model.slack_up[e, y]
-            slack_penalty += 1e7 * model.slack_down[e, y]
+            slack_penalty += 1e7 * (model.slack_s_up[e, y] + model.slack_s_down[e, y])
+            slack_penalty += 1e7 * (model.slack_e_up[e, y] + model.slack_e_down[e, y])
 
     obj = operational_cost + slack_penalty
     model.objective = pe.Objective(sense=pe.minimize, expr=obj)
