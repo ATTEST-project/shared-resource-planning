@@ -443,11 +443,10 @@ def _build_subproblem_model(shared_ess_data):
                             # Secondary reserve -- Bands bounds
                             model.secondary_reserve.add(pdown <= pdch_max - pdch)
                             model.secondary_reserve.add(pup <= pch_max - pch)
-                            if p < len(model.periods) - 1:
-                                model.secondary_reserve.add(pup <= (soc_max - model.es_soc[e, y, d, s_m, s_o, p + 1]) / eff_discharge)
-                                model.secondary_reserve.add(pdown <= (soc_max - model.es_soc[e, y, d, s_m, s_o, p + 1]) / eff_discharge)
-                                model.secondary_reserve.add(pup <= (model.es_soc[e, y, d, s_m, s_o, p + 1] - soc_min) * eff_charge)
-                                model.secondary_reserve.add(pdown <= (model.es_soc[e, y, d, s_m, s_o, p + 1] - soc_min) * eff_charge)
+                            model.secondary_reserve.add(pup <= (soc_max - model.es_soc[e, y, d, s_m, s_o, p]) / eff_discharge)
+                            model.secondary_reserve.add(pdown <= (soc_max - model.es_soc[e, y, d, s_m, s_o, p]) / eff_discharge)
+                            model.secondary_reserve.add(pup <= (model.es_soc[e, y, d, s_m, s_o, p] - soc_min) * eff_charge)
+                            model.secondary_reserve.add(pdown <= (model.es_soc[e, y, d, s_m, s_o, p] - soc_min) * eff_charge)
 
                             # Secondary reserve -- Ensure that the ESS has enough capacity to charge after providing UP and DOWN reserve
                             # (From current instant to end)
