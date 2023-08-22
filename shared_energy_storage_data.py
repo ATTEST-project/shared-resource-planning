@@ -141,7 +141,7 @@ def _build_master_problem(shared_ess_data):
     # ------------------------------------------------------------------------------------------------------------------
     # Decision variables
     model.es_s_invesment = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)     # Investment in power capacity in year y
-    model.es_e_invesment = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)     # Invesment in energy capacity in year y
+    model.es_e_invesment = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)     # Investment in energy capacity in year y
     model.es_s_rated = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)         # Total rated power capacity (considering calendar life)
     model.es_e_rated = pe.Var(model.energy_storages, model.years, domain=pe.NonNegativeReals)         # Total rated energy capacity (considering calendar life, not considering degradation)
     model.alpha = pe.Var(domain=pe.Reals)                                                             # alpha (associated with cuts) will try to rebuild y in the original problem
@@ -166,11 +166,7 @@ def _build_master_problem(shared_ess_data):
                 total_e_capacity_per_year[x] += model.es_e_invesment[e, y]
         for y in model.years:
             model.rated_s_capacity.add(model.es_s_rated[e, y] == total_s_capacity_per_year[y])
-            #model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] >= -SMALL_TOLERANCE)
-            #model.rated_s_capacity.add(model.es_s_rated[e, y] - total_s_capacity_per_year[y] <= SMALL_TOLERANCE)
             model.rated_e_capacity.add(model.es_e_rated[e, y] == total_e_capacity_per_year[y])
-            #model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] >= -SMALL_TOLERANCE)
-            #model.rated_e_capacity.add(model.es_e_rated[e, y] - total_e_capacity_per_year[y] <= SMALL_TOLERANCE)
 
     # - Maximum Energy Capacity (related to space constraints)
     model.energy_storage_maximum_capacity = pe.ConstraintList()
@@ -178,12 +174,14 @@ def _build_master_problem(shared_ess_data):
         for y in model.years:
             model.energy_storage_maximum_capacity.add(model.es_e_rated[e, y] <= params.max_capacity)
 
+    '''
     model.energy_storage_minimum_capacity = pe.ConstraintList()
     for e in model.energy_storages:
         total_capacity = 0.0
         for y in model.years:
             total_capacity += model.es_e_rated[e, y]
         model.energy_storage_minimum_capacity.add(total_capacity >= params.max_capacity * 0.01)
+    '''
 
     # - P/E factor
     model.energy_storage_power_to_energy_factor = pe.ConstraintList()
