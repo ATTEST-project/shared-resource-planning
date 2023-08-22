@@ -1882,6 +1882,7 @@ def _process_results(network, model, params, results=dict()):
     processed_results['gen_cost'] = _compute_generation_cost(network, model)
     processed_results['total_load'] = _compute_total_load(network, model, params)
     processed_results['total_gen'] = _compute_total_generation(network, model, params)
+    processed_results['total_conventional_gen'] = _compute_conventional_generation(network, model, params)
     processed_results['total_renewable_gen'] = _compute_renewable_generation(network, model, params)
     processed_results['losses'] = _compute_losses(network, model, params)
     processed_results['gen_curt'] = _compute_generation_curtailment(network, model, params)
@@ -2366,6 +2367,25 @@ def _compute_total_generation(network, model, params):
                     total_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
                     if params.rg_curt:
                         total_gen_scenario -= network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
+
+            total_gen += total_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
+
+    return total_gen
+
+
+def _compute_conventional_generation(network, model, params):
+
+    total_gen = 0.0
+
+    for s_m in model.scenarios_market:
+        for s_o in model.scenarios_operation:
+            total_gen_scenario = 0.0
+            for g in model.generators:
+                if network.generators[g].gen_type in GEN_CONVENTIONAL_TYPES:
+                    for p in model.periods:
+                        total_gen_scenario += network.baseMVA * pe.value(model.pg[g, s_m, s_o, p])
+                        if params.rg_curt:
+                            total_gen_scenario -= network.baseMVA * pe.value(model.pg_curt[g, s_m, s_o, p])
 
             total_gen += total_gen_scenario * (network.prob_market_scenarios[s_m] * network.prob_operation_scenarios[s_o])
 
