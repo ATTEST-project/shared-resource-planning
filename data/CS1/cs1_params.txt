@@ -10,5 +10,8 @@ admm_num_max_iters = 100
 rho
 case30 = 0.10
 case18_1 = 0.10
+case18_2 = 0.10
+case18_3 = 0.10
 case33_1 = 0.10
+case33_2 = 0.10
 ESSO = 0.10
