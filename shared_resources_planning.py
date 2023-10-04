@@ -841,7 +841,7 @@ def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_mod
                 day = repr_days[d]
                 shared_ess_vars['esso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
                 for p in sess_model.periods:
-                    shared_ess_vars['esso'][node_id][year][day]['p'][p] = abs(pe.value(sess_model.es_expected_p[shared_ess_idx, y, d, p]))
+                    shared_ess_vars['esso'][node_id][year][day]['p'][p] = pe.value(sess_model.es_expected_p[shared_ess_idx, y, d, p])
 
         # Shared Energy Storage - Power requested by TSO
         for y in range(len(planning_problem.years)):
@@ -852,7 +852,7 @@ def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_mod
                 shared_ess_idx = transmission_network.network[year][day].get_shared_energy_storage_idx(node_id)
                 shared_ess_vars['tso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
                 for p in tso_model[year][day].periods:
-                    shared_ess_vars['tso'][node_id][year][day]['p'][p] = abs(pe.value(tso_model[year][day].expected_shared_ess_p[shared_ess_idx, p])) * s_base
+                    shared_ess_vars['tso'][node_id][year][day]['p'][p] = pe.value(tso_model[year][day].expected_shared_ess_p[shared_ess_idx, p]) * s_base
 
         # Shared Energy Storage - Power requested by DSO
         for y in range(len(planning_problem.years)):
@@ -862,7 +862,7 @@ def _update_shared_energy_storage_variables(planning_problem, tso_model, dso_mod
                 s_base = distribution_network.network[year][day].baseMVA
                 shared_ess_vars['dso'][node_id][year][day]['p'] = [0.0 for _ in range(planning_problem.num_instants)]
                 for p in dso_model[year][day].periods:
-                    shared_ess_vars['dso'][node_id][year][day]['p'][p] = abs(pe.value(dso_model[year][day].expected_shared_ess_p[p])) * s_base
+                    shared_ess_vars['dso'][node_id][year][day]['p'][p] = pe.value(dso_model[year][day].expected_shared_ess_p[p]) * s_base
 
         '''
         for year in planning_problem.years:
