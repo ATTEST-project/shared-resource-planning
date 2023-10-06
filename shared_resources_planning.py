@@ -938,7 +938,7 @@ def compute_primal_value(planning_problem, tso_model, dso_models, esso_model):
 
 def check_admm_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, params):
     if consensus_convergence(planning_problem, consensus_vars, params):
-        if stationary_convergence(planning_problem, consensus_vars, params):
+        if stationary_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, params):
             return True
     return False
 
@@ -980,25 +980,28 @@ def consensus_convergence(planning_problem, consensus_vars, params):
     return True
 
 
-def stationary_convergence(planning_problem, consensus_vars, params):
+def stationary_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, params):
 
     rho_esso = params.rho['ESSO']
     rho_tso = params.rho[planning_problem.transmission_network.name]
     interface_vars = consensus_vars['interface']['pf']
     shared_ess_vars = consensus_vars['ess']
+    interface_vars_prev_iter = consensus_vars_prev_iter['interface']['pf']
+    shared_ess_vars_prev_iter = consensus_vars_prev_iter['ess']
     sum_sqr = 0.0
     num_elems = 0
 
     # Interface Power Flow
     for node_id in planning_problem.distribution_networks:
         rho_dso = params.rho[planning_problem.distribution_networks[node_id].name]
-        rho_pf = (rho_tso + rho_dso) * 0.50
         for year in planning_problem.years:
             for day in planning_problem.days:
                 for p in range(planning_problem.num_instants):
-                    sum_sqr += rho_pf * (interface_vars['tso'][node_id][year][day]['p'][p] - interface_vars['dso'][node_id][year][day]['p'][p]) ** 2
-                    sum_sqr += rho_pf * (interface_vars['tso'][node_id][year][day]['q'][p] - interface_vars['dso'][node_id][year][day]['q'][p]) ** 2
-                    num_elems += 2
+                    sum_sqr += rho_tso * (interface_vars['tso'][node_id][year][day]['p'][p] - interface_vars_prev_iter['tso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += rho_tso * (interface_vars['tso'][node_id][year][day]['q'][p] - interface_vars_prev_iter['tso'][node_id][year][day]['q'][p]) ** 2
+                    sum_sqr += rho_dso * (interface_vars['dso'][node_id][year][day]['p'][p] - interface_vars_prev_iter['dso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += rho_dso * (interface_vars['dso'][node_id][year][day]['q'][p] - interface_vars_prev_iter['dso'][node_id][year][day]['q'][p]) ** 2
+                    num_elems += 4
 
     # Shared Energy Storage
     for node_id in planning_problem.distribution_networks:
@@ -1006,11 +1009,11 @@ def stationary_convergence(planning_problem, consensus_vars, params):
         for year in planning_problem.years:
             for day in planning_problem.days:
                 rho_dso = params.rho[distribution_network.network[year][day].name]
-                rho_sess = (rho_esso + rho_dso) * 0.50
                 for p in range(planning_problem.num_instants):
-                    sum_sqr += rho_sess * (shared_ess_vars['tso'][node_id][year][day]['p'][p] - shared_ess_vars['esso'][node_id][year][day]['p'][p]) ** 2
-                    sum_sqr += rho_sess * (shared_ess_vars['dso'][node_id][year][day]['p'][p] - shared_ess_vars['esso'][node_id][year][day]['p'][p]) ** 2
-                    num_elems += 2
+                    sum_sqr += rho_tso * (shared_ess_vars['tso'][node_id][year][day]['p'][p] - shared_ess_vars_prev_iter['tso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += rho_dso * (shared_ess_vars['dso'][node_id][year][day]['p'][p] - shared_ess_vars_prev_iter['dso'][node_id][year][day]['p'][p]) ** 2
+                    sum_sqr += rho_esso * (shared_ess_vars['esso'][node_id][year][day]['p'][p] - shared_ess_vars_prev_iter['esso'][node_id][year][day]['p'][p]) ** 2
+                    num_elems += 3
 
     sum_total = sqrt(sum_sqr)
     if sum_total > params.tol * sqrt(num_elems) and not isclose(sum_total, params.tol * sqrt(num_elems), rel_tol=ADMM_CONVERGENCE_REL_TOL, abs_tol=params.tol):
