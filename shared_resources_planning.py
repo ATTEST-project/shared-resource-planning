@@ -227,7 +227,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
     primal_evolution = list()
 
     # Create ADMM variables
-    consensus_vars, dual_vars = create_admm_variables(planning_problem)
+    consensus_vars, dual_vars, consensus_vars_prev_iter = create_admm_variables(planning_problem)
 
     # Create Operational Planning models
     dso_models = create_distribution_networks_models(distribution_networks, consensus_vars['interface']['pf']['dso'], consensus_vars['ess']['dso'], candidate_solution['total_capacity'])
@@ -337,6 +337,11 @@ def create_admm_variables(planning_problem):
         'ess': {'tso': dict(), 'dso': dict()}
     }
 
+    consensus_variables_prev_iter = {
+        'interface': {'pf': {'tso': dict(), 'dso': dict()}},
+        'ess': {'tso': dict(), 'dso': dict(), 'esso': dict()}
+    }
+
     for dn in range(len(planning_problem.active_distribution_network_nodes)):
 
         node_id = planning_problem.active_distribution_network_nodes[dn]
@@ -353,6 +358,12 @@ def create_admm_variables(planning_problem):
         dual_variables['ess']['tso'][node_id] = dict()
         dual_variables['ess']['dso'][node_id] = dict()
 
+        consensus_variables_prev_iter['interface']['pf']['tso'][node_id] = dict()
+        consensus_variables_prev_iter['interface']['pf']['dso'][node_id] = dict()
+        consensus_variables_prev_iter['ess']['tso'][node_id] = dict()
+        consensus_variables_prev_iter['ess']['dso'][node_id] = dict()
+        consensus_variables_prev_iter['ess']['esso'][node_id] = dict()
+
         for year in planning_problem.years:
 
             consensus_variables['interface']['v'][node_id][year] = dict()
@@ -366,6 +377,12 @@ def create_admm_variables(planning_problem):
             dual_variables['pf']['dso'][node_id][year] = dict()
             dual_variables['ess']['tso'][node_id][year] = dict()
             dual_variables['ess']['dso'][node_id][year] = dict()
+
+            consensus_variables_prev_iter['interface']['pf']['tso'][node_id][year] = dict()
+            consensus_variables_prev_iter['interface']['pf']['dso'][node_id][year] = dict()
+            consensus_variables_prev_iter['ess']['tso'][node_id][year] = dict()
+            consensus_variables_prev_iter['ess']['dso'][node_id][year] = dict()
+            consensus_variables_prev_iter['ess']['esso'][node_id][year] = dict()
 
             for day in planning_problem.days:
 
@@ -381,7 +398,13 @@ def create_admm_variables(planning_problem):
                 dual_variables['ess']['tso'][node_id][year][day] = {'p': [0.0] * planning_problem.num_instants, 'q': [0.0] * num_instants}
                 dual_variables['ess']['dso'][node_id][year][day] = {'p': [0.0] * planning_problem.num_instants, 'q': [0.0] * num_instants}
 
-    return consensus_variables, dual_variables
+                consensus_variables_prev_iter['interface']['pf']['tso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables_prev_iter['interface']['pf']['dso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables_prev_iter['ess']['tso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables_prev_iter['ess']['dso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+                consensus_variables_prev_iter['ess']['esso'][node_id][year][day] = {'p': [0.0] * num_instants, 'q': [0.0] * num_instants}
+
+    return consensus_variables, dual_variables, consensus_variables_prev_iter
 
 
 def create_transmission_network_model(transmission_network, interface_v_vars, interface_pf_vars, sess_vars, candidate_solution):
@@ -1076,7 +1099,7 @@ def _run_operational_planning_without_coordination(planning_problem):
 
 
 def create_interface_power_flow_variables(planning_problem):
-    consensus_vars, dual_vars = create_admm_variables(planning_problem)
+    consensus_vars, _, _ = create_admm_variables(planning_problem)
     return consensus_vars['interface']['pf']['dso']
 
 
