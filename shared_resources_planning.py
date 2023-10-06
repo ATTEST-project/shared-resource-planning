@@ -936,14 +936,14 @@ def compute_primal_value(planning_problem, tso_model, dso_models, esso_model):
     return primal_value
 
 
-def check_admm_convergence(planning_problem, consensus_vars, params):
-    if primal_convergence(planning_problem, consensus_vars, params):
+def check_admm_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, params):
+    if consensus_convergence(planning_problem, consensus_vars, params):
         if dual_convergence(planning_problem, consensus_vars, params):
             return True
     return False
 
 
-def primal_convergence(planning_problem, consensus_vars, params):
+def consensus_convergence(planning_problem, consensus_vars, params):
 
     interface_vars = consensus_vars['interface']['pf']
     shared_ess_vars = consensus_vars['ess']
