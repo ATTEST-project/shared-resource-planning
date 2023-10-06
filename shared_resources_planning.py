@@ -1,5 +1,6 @@
 import os
 import time
+from copy import copy
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
 import pandas as pd
@@ -63,8 +64,8 @@ class SharedResourcesPlanning:
             self.distribution_networks[node_id].update_model_with_candidate_solution(dso_models[node_id], candidate_solution['total_capacity'])
         self.shared_ess_data.update_model_with_candidate_solution(esso_model, candidate_solution['investment'])
 
-    def update_admm_consensus_variables(self, tso_model, dso_models, esso_model, consensus_vars, dual_vars, params):
-        _update_admm_consensus_variables(self, tso_model, dso_models, esso_model, consensus_vars, dual_vars, params)
+    def update_admm_consensus_variables(self, tso_model, dso_models, esso_model, consensus_vars, dual_vars, consensus_vars_prev_iter, params):
+        _update_admm_consensus_variables(self, tso_model, dso_models, esso_model, consensus_vars, dual_vars, consensus_vars_prev_iter, params)
 
     def read_planning_problem(self):
         _read_planning_problem(self)
@@ -257,7 +258,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
                                                                           admm_parameters)
 
         # 2.1 Update ADMM CONSENSUS variables
-        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, consensus_vars_prev_iter, admm_parameters)
 
         # 2.2 Update primal evolution
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
@@ -276,7 +277,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
                                                                            admm_parameters)
 
         # 3.1 Update ADMM CONSENSUS variables
-        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, consensus_vars_prev_iter, admm_parameters)
 
         # 3.2 Update primal evolution
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
@@ -294,7 +295,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
                                                                                      admm_parameters)
 
         # 4.1 Update ADMM CONSENSUS variables
-        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, admm_parameters)
+        planning_problem.update_admm_consensus_variables(tso_model, dso_models, esso_model, consensus_vars, dual_vars, consensus_vars_prev_iter, admm_parameters)
 
         # 4.2 Update primal evolution
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
@@ -788,9 +789,23 @@ def update_shared_energy_storages_coordination_model_and_solve(planning_problem,
     return res
 
 
-def _update_admm_consensus_variables(planning_problem, tso_model, dso_models, esso_model, consensus_vars, dual_vars, params):
+def _update_admm_consensus_variables(planning_problem, tso_model, dso_models, esso_model, consensus_vars, dual_vars, consensus_vars_prev_iter, params):
+    _update_previous_consensus_variables(planning_problem, consensus_vars, consensus_vars_prev_iter)
     _update_interface_power_flow_variables(planning_problem, tso_model, dso_models, consensus_vars['interface'], dual_vars['pf'], params)
     _update_shared_energy_storage_variables(planning_problem, tso_model, dso_models, esso_model, consensus_vars['ess'], dual_vars['ess'], params)
+
+
+def _update_previous_consensus_variables(planning_problem, consensus_vars, consensus_vars_prev_iter):
+    for dn in range(len(planning_problem.active_distribution_network_nodes)):
+        node_id = planning_problem.active_distribution_network_nodes[dn]
+        for year in planning_problem.years:
+            for day in planning_problem.days:
+                for p in range(planning_problem.num_instants):
+                    consensus_vars_prev_iter['interface']['pf']['tso'][node_id][year][day]['p'][p] = copy(consensus_vars['interface']['pf']['tso'][node_id][year][day]['p'][p])
+                    consensus_vars_prev_iter['interface']['pf']['tso'][node_id][year][day]['q'][p] = copy(consensus_vars['interface']['pf']['tso'][node_id][year][day]['q'][p])
+                    consensus_vars_prev_iter['ess']['tso'][node_id][year][day]['p'][p] = copy(consensus_vars['ess']['tso'][node_id][year][day]['p'][p])
+                    consensus_vars_prev_iter['ess']['dso'][node_id][year][day]['p'][p] = copy(consensus_vars['ess']['dso'][node_id][year][day]['p'][p])
+                    consensus_vars_prev_iter['ess']['esso'][node_id][year][day]['p'][p] = copy(consensus_vars['ess']['esso'][node_id][year][day]['p'][p])
 
 
 def _update_interface_power_flow_variables(planning_problem, tso_model, dso_models, interface_vars, dual_vars, params):
