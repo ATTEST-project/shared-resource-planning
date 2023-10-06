@@ -938,7 +938,7 @@ def compute_primal_value(planning_problem, tso_model, dso_models, esso_model):
 
 def check_admm_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, params):
     if consensus_convergence(planning_problem, consensus_vars, params):
-        if dual_convergence(planning_problem, consensus_vars, params):
+        if stationary_convergence(planning_problem, consensus_vars, params):
             return True
     return False
 
@@ -980,7 +980,7 @@ def consensus_convergence(planning_problem, consensus_vars, params):
     return True
 
 
-def dual_convergence(planning_problem, consensus_vars, params):
+def stationary_convergence(planning_problem, consensus_vars, params):
 
     rho_esso = params.rho['ESSO']
     rho_tso = params.rho[planning_problem.transmission_network.name]
