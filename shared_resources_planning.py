@@ -264,10 +264,9 @@ def _run_operational_planning(planning_problem, candidate_solution):
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
 
         # 2.3 STOPPING CRITERIA evaluation
-        if iter >= 1:
-            convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
-            if convergence:
-                break
+        convergence = check_admm_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, admm_parameters)
+        if convergence:
+            break
 
         # --------------------------------------------------------------------------------------------------------------
         # 3. Solve DSOs problems
@@ -283,10 +282,9 @@ def _run_operational_planning(planning_problem, candidate_solution):
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
 
         # 3.3 STOPPING CRITERIA evaluation
-        if iter >= 1:
-            convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
-            if convergence:
-                break
+        convergence = check_admm_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, admm_parameters)
+        if convergence:
+            break
 
         # --------------------------------------------------------------------------------------------------------------
         # 4. Solve ESSO problem
@@ -301,7 +299,7 @@ def _run_operational_planning(planning_problem, candidate_solution):
         primal_evolution.append(compute_primal_value(planning_problem, tso_model, dso_models, esso_model))
 
         # 4.3 STOPPING CRITERIA evaluation
-        convergence = check_admm_convergence(planning_problem, consensus_vars, admm_parameters)
+        convergence = check_admm_convergence(planning_problem, consensus_vars, consensus_vars_prev_iter, admm_parameters)
         if convergence:
             break
 
@@ -803,6 +801,8 @@ def _update_previous_consensus_variables(planning_problem, consensus_vars, conse
                 for p in range(planning_problem.num_instants):
                     consensus_vars_prev_iter['interface']['pf']['tso'][node_id][year][day]['p'][p] = copy(consensus_vars['interface']['pf']['tso'][node_id][year][day]['p'][p])
                     consensus_vars_prev_iter['interface']['pf']['tso'][node_id][year][day]['q'][p] = copy(consensus_vars['interface']['pf']['tso'][node_id][year][day]['q'][p])
+                    consensus_vars_prev_iter['interface']['pf']['dso'][node_id][year][day]['p'][p] = copy(consensus_vars['interface']['pf']['dso'][node_id][year][day]['p'][p])
+                    consensus_vars_prev_iter['interface']['pf']['dso'][node_id][year][day]['q'][p] = copy(consensus_vars['interface']['pf']['dso'][node_id][year][day]['q'][p])
                     consensus_vars_prev_iter['ess']['tso'][node_id][year][day]['p'][p] = copy(consensus_vars['ess']['tso'][node_id][year][day]['p'][p])
                     consensus_vars_prev_iter['ess']['dso'][node_id][year][day]['p'][p] = copy(consensus_vars['ess']['dso'][node_id][year][day]['p'][p])
                     consensus_vars_prev_iter['ess']['esso'][node_id][year][day]['p'][p] = copy(consensus_vars['ess']['esso'][node_id][year][day]['p'][p])
