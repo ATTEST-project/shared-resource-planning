@@ -1,6 +1,8 @@
                                 EUROPEAN UNION PUBLIC LICENCE v. 1.2
                                 EUPL © the European Union 2007, 2016
 
+Copyright (C) 2023, INESC TEC
+
 Task 3.3 – Optimization Tool for Planning TSO-DSO Shared Technologies: Planning tool for TSO-DSO shared 
 technologies. The tool is focused on the planning of shared ESSs that can simultaneously be used by TSO 
 and DSOs. It is considered that the investment in the shared ESSs is performed by a third-party investor, 
